@@ -6,7 +6,7 @@ function App() {
 
   useEffect(() => {
 
-    fetch("http://localhost:5000/api/meals")
+    fetch("http://localhost:5260/api/meals")
       .then(res => res.json())
       .then(data => {
         console.log(data);

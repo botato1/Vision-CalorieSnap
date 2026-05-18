@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("FoodAI.API")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d80a3be987471cdd21e099f9387681e294955ab6")]
 [assembly: System.Reflection.AssemblyProductAttribute("FoodAI.API")]
 [assembly: System.Reflection.AssemblyTitleAttribute("FoodAI.API")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

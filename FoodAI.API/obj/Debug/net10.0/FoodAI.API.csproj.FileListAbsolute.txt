@@ -146,3 +146,4 @@ D:\202210887\몰입형프로젝트_먹깨비\Vision-CalorieSnap\FoodAI.API\obj\D
 D:\202210887\몰입형프로젝트_먹깨비\Vision-CalorieSnap\FoodAI.API\obj\Debug\net10.0\FoodAI.API.pdb
 D:\202210887\몰입형프로젝트_먹깨비\Vision-CalorieSnap\FoodAI.API\obj\Debug\net10.0\FoodAI.API.genruntimeconfig.cache
 D:\202210887\몰입형프로젝트_먹깨비\Vision-CalorieSnap\FoodAI.API\obj\Debug\net10.0\ref\FoodAI.API.dll
+D:\202210887\몰입형프로젝트_먹깨비\Vision-CalorieSnap\FoodAI.API\obj\Debug\net10.0\FoodAI.API.sourcelink.json

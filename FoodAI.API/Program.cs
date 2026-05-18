@@ -1,13 +1,10 @@
 ﻿var builder = WebApplication.CreateBuilder(args);
 
-// Controller 등록
 builder.Services.AddControllers();
 
-// Swagger 등록
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// React 연결용 CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReact",
@@ -22,16 +19,14 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Swagger 활성화
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 
-// CORS 사용
 app.UseCors("AllowReact");
 
 app.UseAuthorization();
