@@ -1,0 +1,6 @@
+﻿@FoodAI.API_HostAddress = https://localhost:5260
+
+GET {{FoodAI.API_HostAddress}}/api/meals
+Accept: application/json
+
+###

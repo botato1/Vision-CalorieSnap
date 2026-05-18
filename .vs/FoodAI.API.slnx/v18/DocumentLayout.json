@@ -1,0 +1,69 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\202210887\\\uBAB0\uC785\uD615\uD504\uB85C\uC81D\uD2B8_\uBA39\uAE68\uBE44\\Vision-CalorieSnap\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{D0DECA50-D4F2-C4EB-B79B-E042345816D5}|FoodAI.API\\FoodAI.API.csproj|d:\\202210887\\\uBAB0\uC785\uD615\uD504\uB85C\uC81D\uD2B8_\uBA39\uAE68\uBE44\\vision-caloriesnap\\foodai.api\\controllers\\mealscontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D0DECA50-D4F2-C4EB-B79B-E042345816D5}|FoodAI.API\\FoodAI.API.csproj|solutionrelative:foodai.api\\controllers\\mealscontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{D0DECA50-D4F2-C4EB-B79B-E042345816D5}|FoodAI.API\\FoodAI.API.csproj|d:\\202210887\\\uBAB0\uC785\uD615\uD504\uB85C\uC81D\uD2B8_\uBA39\uAE68\uBE44\\vision-caloriesnap\\foodai.api\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D0DECA50-D4F2-C4EB-B79B-E042345816D5}|FoodAI.API\\FoodAI.API.csproj|solutionrelative:foodai.api\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{D0DECA50-D4F2-C4EB-B79B-E042345816D5}|FoodAI.API\\FoodAI.API.csproj|d:\\202210887\\\uBAB0\uC785\uD615\uD504\uB85C\uC81D\uD2B8_\uBA39\uAE68\uBE44\\vision-caloriesnap\\foodai.api\\foodai.api.http||{5703B403-55E7-4C63-8C88-A8F52C7A45C5}",
+      "RelativeMoniker": "D:0:0:{D0DECA50-D4F2-C4EB-B79B-E042345816D5}|FoodAI.API\\FoodAI.API.csproj|solutionrelative:foodai.api\\foodai.api.http||{5703B403-55E7-4C63-8C88-A8F52C7A45C5}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "MealsController.cs",
+              "DocumentMoniker": "D:\\202210887\\\uBAB0\uC785\uD615\uD504\uB85C\uC81D\uD2B8_\uBA39\uAE68\uBE44\\Vision-CalorieSnap\\FoodAI.API\\Controllers\\MealsController.cs",
+              "RelativeDocumentMoniker": "FoodAI.API\\Controllers\\MealsController.cs",
+              "ToolTip": "D:\\202210887\\\uBAB0\uC785\uD615\uD504\uB85C\uC81D\uD2B8_\uBA39\uAE68\uBE44\\Vision-CalorieSnap\\FoodAI.API\\Controllers\\MealsController.cs",
+              "RelativeToolTip": "FoodAI.API\\Controllers\\MealsController.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA0AAAAoAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-05-18T07:03:49.085Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "Program.cs",
+              "DocumentMoniker": "D:\\202210887\\\uBAB0\uC785\uD615\uD504\uB85C\uC81D\uD2B8_\uBA39\uAE68\uBE44\\Vision-CalorieSnap\\FoodAI.API\\Program.cs",
+              "RelativeDocumentMoniker": "FoodAI.API\\Program.cs",
+              "ToolTip": "D:\\202210887\\\uBAB0\uC785\uD615\uD504\uB85C\uC81D\uD2B8_\uBA39\uAE68\uBE44\\Vision-CalorieSnap\\FoodAI.API\\Program.cs",
+              "RelativeToolTip": "FoodAI.API\\Program.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAoAAAAjAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-05-18T06:57:03.938Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "FoodAI.API.http",
+              "DocumentMoniker": "D:\\202210887\\\uBAB0\uC785\uD615\uD504\uB85C\uC81D\uD2B8_\uBA39\uAE68\uBE44\\Vision-CalorieSnap\\FoodAI.API\\FoodAI.API.http",
+              "RelativeDocumentMoniker": "FoodAI.API\\FoodAI.API.http",
+              "ToolTip": "D:\\202210887\\\uBAB0\uC785\uD615\uD504\uB85C\uC81D\uD2B8_\uBA39\uAE68\uBE44\\Vision-CalorieSnap\\FoodAI.API\\FoodAI.API.http",
+              "RelativeToolTip": "FoodAI.API\\FoodAI.API.http",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAUAAAADAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003502|",
+              "WhenOpened": "2026-05-18T06:57:09.387Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
