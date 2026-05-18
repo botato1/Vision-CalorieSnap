@@ -1,16 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "PeqNC7Yb+7U=",
+  "dgSpecHash": "pspPCQAL/t0=",
   "success": true,
-  "projectFilePath": "D:\\202210887\\몰입형프로젝트_먹깨비\\Vision-CalorieSnap\\FoodAI.API\\FoodAI.API.csproj",
-  "expectedPackageFiles": [
-    "C:\\Users\\aaa\\.nuget\\packages\\microsoft.aspnetcore.openapi\\10.0.8\\microsoft.aspnetcore.openapi.10.0.8.nupkg.sha512",
-    "C:\\Users\\aaa\\.nuget\\packages\\microsoft.extensions.apidescription.server\\10.0.0\\microsoft.extensions.apidescription.server.10.0.0.nupkg.sha512",
-    "C:\\Users\\aaa\\.nuget\\packages\\microsoft.openapi\\2.4.1\\microsoft.openapi.2.4.1.nupkg.sha512",
-    "C:\\Users\\aaa\\.nuget\\packages\\swashbuckle.aspnetcore\\10.1.7\\swashbuckle.aspnetcore.10.1.7.nupkg.sha512",
-    "C:\\Users\\aaa\\.nuget\\packages\\swashbuckle.aspnetcore.swagger\\10.1.7\\swashbuckle.aspnetcore.swagger.10.1.7.nupkg.sha512",
-    "C:\\Users\\aaa\\.nuget\\packages\\swashbuckle.aspnetcore.swaggergen\\10.1.7\\swashbuckle.aspnetcore.swaggergen.10.1.7.nupkg.sha512",
-    "C:\\Users\\aaa\\.nuget\\packages\\swashbuckle.aspnetcore.swaggerui\\10.1.7\\swashbuckle.aspnetcore.swaggerui.10.1.7.nupkg.sha512"
-  ],
+  "projectFilePath": "C:\\Users\\awd38\\OneDrive\\문서\\GitHub\\Vision-CalorieSnap\\FoodAI.API\\FoodAI.API.csproj",
+  "expectedPackageFiles": [],
   "logs": []
 }
