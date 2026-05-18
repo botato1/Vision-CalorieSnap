@@ -11,7 +11,7 @@ public class MealsController : ControllerBase
     {
         return Ok(new
         {
-            message = "FoodAI API 정상 동작"
+            message = "FoodAI API 정상 동작" //good
         });
     }
 }
