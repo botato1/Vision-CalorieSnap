@@ -1,5 +1,5 @@
 {
-  "openapi": "3.0.4",
+  "openapi": "3.0.1",
   "info": {
     "title": "FoodAI.API",
     "version": "1.0"
@@ -16,12 +16,39 @@
           }
         }
       }
+    },
+    "/api/meals/analyze": {
+      "post": {
+        "tags": [
+          "Meals"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              },
+              "encoding": {
+                "image": {
+                  "style": "form"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
     }
   },
-  "components": { },
-  "tags": [
-    {
-      "name": "Meals"
-    }
-  ]
+  "components": { }
 }
