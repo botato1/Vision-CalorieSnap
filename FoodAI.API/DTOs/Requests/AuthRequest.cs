@@ -2,8 +2,6 @@
 
 namespace FoodAI.API.DTOs.Requests
 {
-   
-   
     public class CreateUserProfileRequest
     {
         [Required, MaxLength(50)]
@@ -37,31 +35,9 @@ namespace FoodAI.API.DTOs.Requests
         [Range(500, 5000, ErrorMessage = "목표 칼로리는 500~5000kcal 사이여야 합니다")]
         public double TargetCalories { get; set; } = 2000;
     }
-
-    public class UpdateUserProfileRequest
-    {
-        
-        [Range(50, 250)]
-        public double Height { get; set; }
-
-        [Range(10, 300)]
-        public double Weight { get; set; }
-
-        [Range(500, 5000)]
-        public double TargetCalories { get; set; }
-    }
-
     public class LoginUserRequest
     {
         public string ProfileID { get; set; } = string.Empty;
         public string ProfilePW { get; set; } = string.Empty;
     }
-
-    
-
-    
-
-
-
-
 }
