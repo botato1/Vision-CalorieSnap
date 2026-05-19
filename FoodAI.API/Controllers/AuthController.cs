@@ -15,66 +15,52 @@ namespace FoodAI.API.Controllers
     [Route("api/auth")]
     public class AuthController : ControllerBase
     {
-        private readonly DatabaseContext _db;
-        private readonly IUserService _userService;
+        private readonly IAuthService _authService;
 
-        public AuthController(DatabaseContext db, IUserService userService)
+        public AuthController(IAuthService authService)
         {
-            _db = db;
-            _userService = userService;
+            _authService = authService;
         }
 
         // POST /api/auth/login
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginUserRequest request)
         {
-            using var conn = _db.CreateConnection();
-            await conn.OpenAsync();
+            var result = await _authService.LoginAsync(request);
 
-            // DB에서 이름 + 비밀번호로 유저 조회
-            using var cmd = new SqlCommand(
-                "SELECT ProfileID, Name FROM dbo.UserProfile WHERE ProfileID = @ProfileID AND ProfilePW = @ProfilePW", conn);
-            cmd.Parameters.AddWithValue("@ProfileID", request.ProfileID);
-            cmd.Parameters.AddWithValue("@ProfilePW", request.ProfilePW);
+            if (result is null)
+                return Unauthorized(new { message = "ID 또는 비밀번호가 틀렸습니다." });
 
-            using var reader = await cmd.ExecuteReaderAsync();
-
-            if (!reader.Read())
-                return Unauthorized(new { message = "이름 또는 비밀번호가 틀렸습니다." });
-
-            return Ok(new
+            return Ok(new 
             {
                 message = "로그인 성공",
-                profileId = reader["ProfileID"],
-                name = reader["Name"]
+                profileId = result.ProfileID,
+                name = result.Name
             });
         }
-
-        //회원가입 POST /api/auth/register
+        // POST /api/auth/register
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] CreateUserProfileRequest request)
         {
-            if (await _userService.ExistsAsync(request.ProfileID))
+            if (await _authService.ExistsAsync(request.ProfileID))
                 return Conflict(new { message = "이미 사용 중인 ID입니다." });
 
-            // 2. DTO → 모델 변환 후 생성
             var model = UserService.ToModel(request);
-            var createdId = await _userService.CreateAsync(model);
+            var createdId = await _authService.CreateAsync(model);
 
-            // 3. 결과 반환
-            return Ok(new AuthResponse
+            return StatusCode(201, new
             {
-                Message = "회원가입 성공",
-                ProfileID = createdId,
-                Name = request.Name
+                message = "회원가입 성공",
+                profileId = createdId,
+                name = request.Name
             });
         }
 
-        //ID중복체크 GET  /api/auth/check/{profileId} 
+        /*// GET /api/auth/check/{profileId}
         [HttpGet("check/{profileId}")]
         public async Task<IActionResult> CheckIdAvailable(string profileId)
         {
-            var exists = await _userService.ExistsAsync(profileId);
+            var exists = await _authService.ExistsAsync(profileId);
 
             return Ok(new
             {
@@ -82,30 +68,9 @@ namespace FoodAI.API.Controllers
                 available = !exists,
                 message = exists ? "이미 사용 중인 ID입니다." : "사용 가능한 ID입니다."
             });
-        }
-        [HttpPatch("{profileId}/body")]
-        //회원 정보 수정
-        public async Task<IActionResult> UpdateUser(string profileId, [FromBody] UpdateUserProfileRequest request)
-        {
-            // 프로필 존재 확인
-            var existing = await _userService.GetByIdAsync(profileId);
-            if (existing is null)
-                return NotFound(new { message = $"프로필을 찾을 수 없습니다: {profileId}" });
+        }*/
 
-            // 수정 실행
-            var success = await _userService.UpdateAsync(profileId, request);
 
-            if (!success)
-                return StatusCode(500, new { message = "수정에 실패했습니다." });
-
-            // 수정 후 최신 정보 반환
-            var updated = await _userService.GetByIdAsync(profileId);
-            return Ok(new
-            {
-                message = "신체 정보가 수정되었습니다.",
-                profile = UserService.ToResponse(updated!)
-            });
-        }
 
 
     }
