@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 // DB의 영양성분은 '100g'을 기준으로 한다고 가정합니다.
 const DUMMY_FOOD_DB = [
@@ -23,13 +23,14 @@ const RECOMMEND_MENU_DB = [
   { name: '🥑 연어 아보카도 샐러드 랩', tag: '⚖️ 영양 균형식', tagColor: 'bg-blue-50 text-blue-600 border-blue-100', calories: 380, carbs: 42, protein: 22, fat: 12, desc: '탄수화물과 지방의 밸런스가 뛰어나며 오메가3가 풍부합니다.' },
 ];
 
+// 활동 배수(multiplier)는 미플린-세인트 지어 공식의 PAL 계수 기준
 const JOB_OPTIONS = [
-  { value: 'office', label: '💼 사무직', desc: '하루 대부분 앉아서 근무' },
-  { value: 'student', label: '📚 학생', desc: '학교/학원 중심 생활' },
-  { value: 'physical', label: '🔨 육체 노동직', desc: '활동량이 많은 직업' },
-  { value: 'service', label: '🛎️ 서비스직', desc: '서서 이동이 많은 직업' },
-  { value: 'freelance', label: '🏠 재택/프리랜서', desc: '집에서 주로 작업' },
-  { value: 'athlete', label: '🏃 운동선수/트레이너', desc: '고강도 활동 직업' },
+  { value: 'sedentary', label: '💼 사무직/재택', desc: '주로 앉아서 생활하는 직업', multiplier: 1.2 },
+  { value: 'student', label: '📚 학생', desc: '학교 중심, 가끔 이동', multiplier: 1.3 },
+  { value: 'service', label: '🛎️ 서비스/판매직', desc: '서서 이동이 많은 직업', multiplier: 1.375 },
+  { value: 'field', label: '🚶 현장직/교사', desc: '이동과 활동이 많은 직업', multiplier: 1.55 },
+  { value: 'physical', label: '🔨 육체노동직', desc: '하루 종일 몸을 쓰는 직업', multiplier: 1.725 },
+  { value: 'athlete', label: '🏃 운동선수/트레이너', desc: '고강도 훈련이 일상인 직업', multiplier: 1.9 },
 ];
 
 const MEAL_CFG = {
@@ -50,6 +51,9 @@ function calcTotals(items) {
 }
 
 export default function Home() {
+    const [analysisResult, setAnalysisResult] = useState(null); // AI VISION 분석 결과를 저장하는 변수
+  // 분석된 음식 중 사용자가 선택(체크)한 항목의 인덱스 번호 목록
+  const [selectedFoods, setSelectedFoods] = useState<number[]>([]);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isInitialSetupDone, setIsInitialSetupDone] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -62,18 +66,29 @@ export default function Home() {
   // 1. 캘린더 날짜 상태 관리
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   
-  const TARGET_CALORIES = 2000;
-  const TARGET = { carbs: 250, protein: 120, fat: 65, sodium: 2000 };
+  // 미플린-세인트 지어 공식으로 기초대사량(BMR) 계산 후 직업 활동 배수 적용
+  const calcTargetCalories = () => {
+    const weight = parseFloat(userInfo.weight);
+    const height = parseFloat(userInfo.height);
+    const age = parseFloat(userInfo.age);
+    if (!weight || !height || !age) return 2000;
+    const bmr = userInfo.gender === 'male'
+      ? 10 * weight + 6.25 * height - 5 * age + 5
+      : 10 * weight + 6.25 * height - 5 * age - 161;
+    const job = JOB_OPTIONS.find(j => j.value === userInfo.job);
+    return Math.round(bmr * (job?.multiplier ?? 1.2));
+  };
+  const TARGET_CALORIES = calcTargetCalories();
+  // 탄수화물 50% / 단백질 20% / 지방 30% 비율로 목표 영양소 자동 계산
+  const TARGET = {
+    carbs: Math.round(TARGET_CALORIES * 0.5 / 4),
+    protein: Math.round(TARGET_CALORIES * 0.2 / 4),
+    fat: Math.round(TARGET_CALORIES * 0.3 / 9),
+    sodium: 2000,
+  };
   
-  // 2. 날짜별 고유 식단 기록 저장을 위한 Map 형태의 상태 개편
-  const [mealsByDate, setMealsByDate] = useState({
-    [new Date().toISOString().split('T')[0]]: {
-      breakfast: { items: [{ name: '닭가슴살', calories: 165, carbs: 0, protein: 31, fat: 3, sodium: 150, grams: 100 }], imgUrl: null },
-      lunch: { items: [{ name: '제육볶음', calories: 480, carbs: 22, protein: 34, fat: 20, sodium: 890, grams: 100 }, { name: '현미밥', calories: 210, carbs: 44, protein: 5, fat: 2, sodium: 10, grams: 100 }], imgUrl: null },
-      dinner: { items: [], imgUrl: null },
-      snack: { items: [], imgUrl: null },
-    }
-  });
+  // 2. 날짜별 고유 식단 기록 저장 - 하드코드 제거, 모든 끼니 빈 배열로 시작
+  const [mealsByDate, setMealsByDate] = useState({});
 
   // 현재 선택된 날짜의 식단 가져오기
   const currentMeals = mealsByDate[selectedDate] || {
@@ -107,6 +122,13 @@ export default function Home() {
   const [searchMealType, setSearchMealType] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFoodForDetail, setSelectedFoodForDetail] = useState(null);
+  // 실제 API에서 받아온 음식 검색 결과
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
+  // Gemini AI 메뉴 추천 결과 + 에러 상태
+  const [aiRecommendations, setAiRecommendations] = useState<any[]>([]);
+  const [isRecommendLoading, setIsRecommendLoading] = useState(false);
+  const [recommendError, setRecommendError] = useState<string | null>(null);
   const [foodGrams, setFoodGrams] = useState(100);
   const [isPhotoOpen, setIsPhotoOpen] = useState(false);
   const [photoMealType, setPhotoMealType] = useState(null);
@@ -114,12 +136,74 @@ export default function Home() {
   const [analysisStatus, setAnalysisStatus] = useState('idle');
   const fileInputRef = useRef(null);
 
-  const [favorites, setFavorites] = useState([]);
+  // 즐겨찾기: 음식 이름만 저장하던 것 → 영양 데이터 전체 저장
+  const [favorites, setFavorites] = useState<any[]>([]);
   const [graphPeriod, setGraphPeriod] = useState('daily');
 
   const allItems = [...meals.breakfast.items, ...meals.lunch.items, ...meals.dinner.items, ...meals.snack.items];
   const totalConsumed = calcTotals(allItems);
   const pct = Math.min(100, Math.round((totalConsumed.calories / TARGET_CALORIES) * 100));
+
+  // 아침/점심/저녁 중 하나라도 음식이 추가되면 Gemini AI 추천 자동 호출
+  // 3초 디바운스 + AbortController → 연속 식단 추가 시 API 과호출 방지 (Gemini 할당량 보호)
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const hasMeal = meals.breakfast.items.length > 0 || meals.lunch.items.length > 0 || meals.dinner.items.length > 0;
+    if (!hasMeal) { setAiRecommendations([]); setRecommendError(null); return; }
+    // 디바운스 대기 시작 시 로딩 상태로 전환 (3초 후 실제 API 호출)
+    setIsRecommendLoading(true);
+
+    const remaining = {
+      calories: Math.max(0, TARGET_CALORIES - totalConsumed.calories),
+      protein: Math.max(0, TARGET.protein - totalConsumed.protein),
+      carbs: Math.max(0, TARGET.carbs - totalConsumed.carbs),
+      fat: Math.max(0, TARGET.fat - totalConsumed.fat),
+    };
+
+    const fetchRecommendations = async () => {
+      setIsRecommendLoading(true);
+      setRecommendError(null);
+      try {
+        const res = await fetch('http://localhost:5260/api/meals/recommend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            remainingCalories: remaining.calories,
+            remainingProtein: remaining.protein,
+            remainingCarbs: remaining.carbs,
+            remainingFat: remaining.fat,
+          }),
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          // Gemini가 JSON 문자열로 반환하는 경우 파싱
+          const parsed = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
+          setAiRecommendations(Array.isArray(parsed) ? parsed : []);
+        } else {
+          // 503/500 등 서버 오류 시 에러 메시지 표시
+          const errData = await res.json().catch(() => ({}));
+          setRecommendError(errData.message || `AI 추천 서비스 오류 (${res.status})`);
+          setAiRecommendations([]);
+        }
+      } catch (e: any) {
+        // AbortError(요청 취소)는 무시, 네트워크 오류는 에러 표시
+        if (e?.name !== 'AbortError') {
+          setRecommendError('네트워크 오류로 AI 추천을 불러올 수 없습니다.');
+          setAiRecommendations([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) setIsRecommendLoading(false);
+      }
+    };
+
+    // 3초 디바운스: 마지막 식단 변경 후 3초 뒤에 API 1회만 호출
+    const timer = setTimeout(fetchRecommendations, 3000);
+
+    // cleanup: 타이머 취소 + 진행 중인 요청 abort
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [meals.breakfast.items.length, meals.lunch.items.length, meals.dinner.items.length, selectedDate]);
 
   const changeDate = (days) => {
     const d = new Date(selectedDate);
@@ -134,7 +218,7 @@ export default function Home() {
       const res = await fetch('http://localhost:5260/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: loginId, password: loginPw }),
+        body: JSON.stringify({ profileID: loginId, profilePW: loginPw }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -161,8 +245,27 @@ export default function Home() {
   const openMealModal = (type) => setMealModalType(type);
   const closeMealModal = () => setMealModalType(null);
 
-  const openSearch = (type) => { setSearchMealType(type); setSearchQuery(''); setIsSearchOpen(true); setSelectedFoodForDetail(null); };
-  const closeSearch = () => { setIsSearchOpen(false); setSearchMealType(null); setSelectedFoodForDetail(null); };
+  const openSearch = (type) => { setSearchMealType(type); setSearchQuery(''); setSearchResults([]); setIsSearchOpen(true); setSelectedFoodForDetail(null); };
+  const closeSearch = () => { setIsSearchOpen(false); setSearchMealType(null); setSelectedFoodForDetail(null); setSearchResults([]); };
+
+  // 음식 이름으로 공공 API를 호출해 검색 결과를 가져오는 함수
+  const handleSearchFood = async (query: string) => {
+    if (!query.trim()) { setSearchResults([]); return; }
+    setIsSearchLoading(true);
+    try {
+      const res = await fetch('http://localhost:5260/api/meals/search-food', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ foodName: query }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResults(data);
+      }
+    } finally {
+      setIsSearchLoading(false);
+    }
+  };
   
   const handleSelectFoodItem = (food) => {
     setSelectedFoodForDetail(food);
@@ -196,9 +299,16 @@ export default function Home() {
     setMeals(prev => ({ ...prev, [type]: { ...prev[type], items: prev[type].items.filter((_, i) => i !== idx) } }));
   };
 
-  const toggleFavorite = (foodName) => {
-    setFavorites(prev => prev.includes(foodName) ? prev.filter(name => name !== foodName) : [...prev, foodName]);
+  // 즐겨찾기 토글 - 전체 음식 데이터를 저장
+  const toggleFavorite = (food: any) => {
+    setFavorites(prev =>
+      prev.some(f => f.name === food.name)
+        ? prev.filter(f => f.name !== food.name)
+        : [...prev, food]
+    );
   };
+  // 즐겨찾기 여부 확인
+  const isFavorite = (foodName: string) => favorites.some(f => f.name === foodName);
 
   const openPhoto = (type) => { setPhotoMealType(type); setModalPhotoUrl(null); setAnalysisStatus('idle'); setIsPhotoOpen(true); };
   const closePhoto = () => { setIsPhotoOpen(false); setPhotoMealType(null); };
@@ -206,41 +316,142 @@ export default function Home() {
     const file = e.target.files?.[0];
     if (file) { const reader = new FileReader(); reader.onloadend = () => { setModalPhotoUrl(reader.result); setAnalysisStatus('idle'); }; reader.readAsDataURL(file); }
   };
-  const startAnalysis = () => { if (!modalPhotoUrl) return; setAnalysisStatus('analyzing'); setTimeout(() => setAnalysisStatus('done'), 1500); };
+  const startAnalysis = async () => {
+    if (!modalPhotoUrl) return;
+    setAnalysisStatus('analyzing');
+    try {
+      const base64 = modalPhotoUrl.split(',')[1];
+      const res = await fetch('http://localhost:5260/api/meals/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: base64,
+          profileId: 'admin',
+          mealType: photoMealType,
+          mealDate: selectedDate,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const foods = JSON.parse(data.result).foods;
+setAnalysisResult(foods);
+        // 분석 완료 시 모든 음식을 기본으로 선택된 상태로 초기화
+        setSelectedFoods(foods.map((_, idx) => idx));
+        setAnalysisStatus('done');
+      } else {
+        setAnalysisStatus('idle');
+        alert('분석 실패');
+      }
+    } catch {
+      setAnalysisStatus('idle');
+      alert('서버 연결 실패');
+    }
+  };
   const confirmPhoto = () => {
-    if (!photoMealType || !modalPhotoUrl || analysisStatus !== 'done') return;
-    const analyzed = { name: '후라이드 치킨 반마리', grams: 250, calories: 650, carbs: 25, protein: 45, fat: 35, sodium: 850 };
-    setMeals(prev => ({ ...prev, [photoMealType]: { imgUrl: modalPhotoUrl, items: [...prev[photoMealType].items, analyzed] } }));
+    if (!photoMealType || !modalPhotoUrl || analysisStatus !== 'done' || !analysisResult) return;
+    // selectedFoods에 있는 인덱스만 필터링해서 선택된 음식만 식단에 추가
+    const newItems = (analysisResult as any[]).filter((_, idx) => selectedFoods.includes(idx)).map((food: any) => ({
+      name: food.name,
+      grams: 100,
+      calories: food.calories,
+      carbs: food.carbs,
+      protein: food.protein,
+      fat: food.fat,
+      sodium: food.sodium || 0,
+    }));
+    setMeals(prev => ({ ...prev, [photoMealType]: { imgUrl: modalPhotoUrl, items: [...prev[photoMealType].items, ...newItems] } }));
     closePhoto();
     setTimeout(() => openMealModal(photoMealType), 80);
   };
   const removeImage = (type) => setMeals(prev => ({ ...prev, [type]: { ...prev[type], imgUrl: null } }));
 
-  const getGraphData = (period) => {
-    const currentCal = totalConsumed.calories;
-    switch(period) {
-      case 'daily':
-        return { labels: ['08시', '12시', '16시', '20시', '24시'], intake: [meals.breakfast.items.reduce((a,c)=>a+c.calories,0), meals.breakfast.items.reduce((a,c)=>a+c.calories,0) + meals.lunch.items.reduce((a,c)=>a+c.calories,0), currentCal, currentCal, currentCal], target: [2000, 2000, 2000, 2000, 2000] };
-      case 'weekly':
-        return { labels: ['월', '화', '수', '목', '금', '토', '일'], intake: [1680, 2150, 1890, 2400, 1720, 2210, currentCal], target: [2000, 2000, 2000, 2000, 2000, 2000, 2000] };
-      case 'monthly':
-        return { labels: ['1주차', '2주차', '3주차', '4주차', '5주차'], intake: [1920, 2110, 1840, 2250, currentCal], target: [2000, 2000, 2000, 2000, 2000] };
-      case 'yearly':
-        return { labels: ['1분기', '2분기', '3분기', '4분기'], intake: [1890, 2040, 1950, currentCal], target: [2000, 2000, 2000, 2000] };
+  // 특정 날짜의 총 칼로리를 mealsByDate에서 계산
+  const getDayCalories = (dateStr: string) => {
+    const day = mealsByDate[dateStr];
+    if (!day) return 0;
+    return ['breakfast','lunch','dinner','snack'].reduce((sum, type) =>
+      sum + (day[type]?.items || []).reduce((s, item) => s + item.calories, 0), 0);
+  };
+
+  // 날짜 문자열(YYYY-MM-DD) 생성 헬퍼
+  const getDateStr = (offset: number) => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + offset);
+    return d.toISOString().split('T')[0];
+  };
+
+  // 실제 mealsByDate 데이터와 TARGET_CALORIES 목표선으로 그래프 데이터 생성
+  const getGraphData = (period: string) => {
+    switch (period) {
+      case 'daily': {
+        // 각 끼니 개별 칼로리 (누적 아님)
+        const b = meals.breakfast.items.reduce((a, c) => a + c.calories, 0);
+        const l = meals.lunch.items.reduce((a, c) => a + c.calories, 0);
+        const d = meals.dinner.items.reduce((a, c) => a + c.calories, 0);
+        const s = meals.snack.items.reduce((a, c) => a + c.calories, 0);
+        return {
+          labels: ['아침', '점심', '저녁', '간식'],
+          intake: [b, l, d, s],
+          target: Array(4).fill(TARGET_CALORIES / 4),
+        };
+      }
+      case 'weekly': {
+        // 월~일 고정 순서로 최근 7일 날짜별 실제 칼로리
+        const dayNames = ['월', '화', '수', '목', '금', '토', '일'];
+        const labels = Array.from({ length: 7 }, (_, i) => {
+          const d = new Date(selectedDate);
+          d.setDate(d.getDate() - 6 + i);
+          const day = d.getDay();
+          return dayNames[day === 0 ? 6 : day - 1];
+        });
+        const intake = Array.from({ length: 7 }, (_, i) => getDayCalories(getDateStr(-6 + i)));
+        return { labels, intake, target: Array(7).fill(TARGET_CALORIES) };
+      }
+      case 'monthly': {
+        // 주별 평균 일일 칼로리 (목표선과 단위 맞춤)
+        const intake = Array.from({ length: 4 }, (_, w) => {
+          const weekTotal = Array.from({ length: 7 }, (_, d) => getDayCalories(getDateStr(-27 + w * 7 + d)))
+            .reduce((a, b) => a + b, 0);
+          return Math.round(weekTotal / 7);
+        });
+        return {
+          labels: ['1주차', '2주차', '3주차', '4주차'],
+          intake,
+          target: Array(4).fill(TARGET_CALORIES),
+        };
+      }
+      case 'yearly': {
+        // 분기별 평균 일일 칼로리 (목표선과 단위 맞춤)
+        const intake = Array.from({ length: 4 }, (_, q) => {
+          const qTotal = Array.from({ length: 91 }, (_, d) => getDayCalories(getDateStr(-364 + q * 91 + d)))
+            .reduce((a, b) => a + b, 0);
+          return Math.round(qTotal / 91);
+        });
+        return {
+          labels: ['1분기', '2분기', '3분기', '4분기'],
+          intake,
+          target: Array(4).fill(TARGET_CALORIES),
+        };
+      }
       default:
         return { labels: [], intake: [], target: [] };
     }
   };
 
   const graphData = getGraphData(graphPeriod);
-  const maxCal = 3000;
+  // NaN/Infinity 방지: 모든 intake 값을 안전한 숫자로 정규화
+  const safeIntake = graphData.intake.map(v => (isNaN(v) || !isFinite(v)) ? 0 : v);
+  // 그래프 Y축 최대값: 목표 칼로리의 1.5배 또는 실제 섭취 최대값 중 큰 값 (최소 1 보장)
+  const maxCal = Math.max(TARGET_CALORIES * 1.5, ...safeIntake, 1);
   const graphWidth = 420;
   const graphHeight = 130;
   const startX = 50;
   const endY = 150;
 
-  const points = graphData.intake.map((val, i) => ({ x: startX + (i / (graphData.labels.length - 1)) * graphWidth, y: endY - (val / maxCal) * graphHeight, val, label: graphData.labels[i] }));
-  const targetPoints = graphData.target.map((val, i) => ({ x: startX + (i / (graphData.labels.length - 1)) * graphWidth, y: endY - (val / maxCal) * graphHeight }));
+  // 라벨 2개 미만이면 빈 배열 (division by zero → NaN 좌표 방지)
+  const _n = graphData.labels.length;
+  const points = _n < 2 ? [] : safeIntake.map((val, i) => ({ x: startX + (i / (_n - 1)) * graphWidth, y: endY - (val / maxCal) * graphHeight, val, label: graphData.labels[i] }));
+  const targetPoints = _n < 2 ? [] : graphData.target.map((val, i) => ({ x: startX + (i / (_n - 1)) * graphWidth, y: endY - ((isNaN(val) ? 0 : val) / maxCal) * graphHeight }));
 
   const intakeLinePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
   const intakeAreaPath = points.length > 0 ? `${intakeLinePath} L ${points[points.length - 1].x} ${endY} L ${points[0].x} ${endY} Z` : '';
@@ -495,30 +706,40 @@ export default function Home() {
 
                 <div className="relative w-full bg-slate-50/50 rounded-2xl border border-slate-100 p-4 overflow-x-auto">
                   <div className="min-w-[450px]">
-                    <svg viewBox="0 0 500 180" className="w-full h-auto overflow-visible">
+                    {/*
+                      key에 기간+섭취량을 모두 포함 → 데이터 변경 시 SVG 완전 재마운트
+                      SVG 내부 요소는 className 대신 SVG 속성 직접 사용 (CSS transition 제거)
+                      → React의 removeChild DOM 충돌 완전 차단
+                    */}
+                    <svg key={`${graphPeriod}-${safeIntake.join(',')}`} viewBox="0 0 500 180" className="w-full h-auto overflow-visible">
                       <defs>
                         <linearGradient id="intakeAreaGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#f97316" stopOpacity="0.25" />
                           <stop offset="100%" stopColor="#f97316" stopOpacity="0.00" />
                         </linearGradient>
                       </defs>
-                      {[0, 1000, 2000, 3000].map((val) => {
-                        const y = endY - (val / maxCal) * graphHeight;
+                      {/* Y축 그리드 + 레이블: SVG 속성만 사용, className 제거 */}
+                      {[0, 0.33, 0.66, 1].map((ratio, i) => {
+                        const val = Math.round(maxCal * ratio);
+                        const y = endY - ratio * graphHeight;
                         return (
-                          <g key={val} className="opacity-40">
-                            <line x1="50" y1={y} x2="480" y2={y} stroke="#cbd5e1" strokeWidth="1" strokeDasharray={val === 2000 ? "0" : "3 3"} />
-                            <text x="42" y={y + 3} textAnchor="end" className="text-[10px] font-bold fill-slate-400">{val}k</text>
+                          <g key={`y${i}`}>
+                            <line x1="50" y1={y} x2="480" y2={y} stroke="#cbd5e1" strokeWidth="1" strokeDasharray={ratio === 0.66 ? "0" : "3 3"} opacity="0.5" />
+                            <text x="42" y={y + 3} textAnchor="end" fill="#94a3b8" fontSize="10" fontWeight="bold" opacity="0.7">{val}</text>
                           </g>
                         );
                       })}
                       {intakeAreaPath && <path d={intakeAreaPath} fill="url(#intakeAreaGrad)" />}
                       {targetLinePath && <path d={targetLinePath} fill="none" stroke="#f43f5e" strokeWidth="1.5" strokeDasharray="5 4" />}
-                      {intakeLinePath && <path d={intakeLinePath} fill="none" stroke="#f97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-sm" />}
-                      {points.map((p, idx) => (
-                        <g key={idx} className="group cursor-pointer">
-                          <circle cx={p.x} cy={p.y} r="4.5" className="fill-white stroke-orange-500 stroke-[2.5] group-hover:r-6 transition-all duration-150" />
-                          <text x={p.x} y={p.y - 9} textAnchor="middle" className="text-[10px] font-black fill-orange-600 opacity-0 group-hover:opacity-100 transition-opacity bg-white px-1 font-sans">{p.val} kcal</text>
-                          <text x={p.x} y="168" textAnchor="middle" className="text-[11px] font-extrabold fill-slate-400 group-hover:fill-slate-700 transition-colors">{p.label}</text>
+                      {intakeLinePath && <path d={intakeLinePath} fill="none" stroke="#f97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />}
+                      {/* 포인트: CSS transition/hover 완전 제거, SVG 속성만 사용 */}
+                      {points.map((p) => (
+                        <g key={`pt-${p.label}`}>
+                          <circle cx={p.x} cy={p.y} r="4.5" fill="white" stroke="#f97316" strokeWidth="2.5" />
+                          {p.val > 0 && (
+                            <text x={p.x} y={p.y - 9} textAnchor="middle" fill="#ea580c" fontSize="10" fontWeight="bold">{p.val} kcal</text>
+                          )}
+                          <text x={p.x} y="168" textAnchor="middle" fill="#94a3b8" fontSize="11" fontWeight="bold">{p.label}</text>
                         </g>
                       ))}
                     </svg>
@@ -555,35 +776,69 @@ export default function Home() {
                     <div key={key}><label className="block text-[10px] font-bold text-slate-400 mb-1 pl-0.5">{label}</label><input type="number" value={userInfo[key]} onChange={(e) => setUserInfo(prev => ({ ...prev, [key]: e.target.value }))} className="w-full text-black bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:bg-white focus:border-orange-400 text-center" required /></div>
                   ))}
                 </div>
-                <div><label className="block text-[10px] font-bold text-slate-400 mb-1 pl-0.5">직업</label><div className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-600 text-center">{selectedJob ? selectedJob.label : '—'}</div></div>
+                {/* 직업 선택 - 클릭해서 변경 가능 */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 mb-1 pl-0.5">직업</label>
+                  <div className="grid grid-cols-2 gap-1">
+                    {JOB_OPTIONS.map(job => (
+                      <button key={job.value} type="button" onClick={() => setUserInfo(prev => ({ ...prev, job: job.value }))}
+                        className={`px-2 py-1.5 rounded-lg border text-[10px] font-bold text-left transition-all ${userInfo.job === job.value ? 'bg-orange-50 border-orange-400 text-orange-600' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}>
+                        {job.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {isSaved && <div className="text-center text-[10px] font-bold text-green-600 bg-green-50 py-1.5 rounded-lg">✅ 정보 업데이트 완료!</div>}
                 <button type="submit" className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-extrabold py-2.5 rounded-xl text-xs hover:opacity-95 transition-all">내 정보 업데이트</button>
               </form>
             </div>
 
-            {/* 2. AI 맞춤 배달 메뉴 추천 창 복구 */}
+            {/* 2. AI 맞춤 추천 - Gemini API 실시간 추천 */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-xl">🤖</span>
-                <h4 className="text-sm font-black text-slate-800">AI 맞춤 배달 메뉴 추천</h4>
+                <h4 className="text-sm font-black text-slate-800">AI 맞춤 추천</h4>
               </div>
-              <div className="space-y-3">
-                {RECOMMEND_MENU_DB.map((menu, idx) => (
-                  <div key={idx} className="p-4 border border-slate-100 rounded-xl bg-slate-50 hover:bg-white hover:border-orange-200 hover:shadow-md transition-all cursor-pointer group">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border ${menu.tagColor}`}>{menu.tag}</span>
-                      <span className="text-xs font-black text-orange-600 group-hover:scale-105 transition-transform">{menu.calories} kcal</span>
+              {isRecommendLoading ? (
+                // Gemini 응답 대기 중 로딩 표시
+                <div className="flex flex-col items-center justify-center py-8 gap-3">
+                  <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-orange-500" />
+                  <p className="text-xs font-bold text-slate-400">AI가 맞춤 메뉴를 분석 중...</p>
+                </div>
+              ) : recommendError ? (
+                // API 오류 시 에러 메시지 + 재시도 안내
+                <div className="flex flex-col items-center justify-center py-8 text-center gap-2">
+                  <span className="text-3xl">⚠️</span>
+                  <p className="text-xs font-bold text-red-500">AI 추천 일시 오류</p>
+                  <p className="text-[10px] text-slate-400 leading-snug break-keep">{recommendError}</p>
+                  <p className="text-[10px] text-slate-400">잠시 후 음식을 추가하면 재시도합니다.</p>
+                </div>
+              ) : aiRecommendations.length > 0 ? (
+                // Gemini가 추천한 메뉴 표시
+                <div className="space-y-3">
+                  {aiRecommendations.map((menu, idx) => (
+                    <div key={idx} className="p-4 border border-slate-100 rounded-xl bg-slate-50 hover:bg-white hover:border-orange-200 hover:shadow-md transition-all group">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full border bg-orange-50 text-orange-600 border-orange-100">🤖 AI 추천</span>
+                        <span className="text-xs font-black text-orange-600">{menu.calories} kcal</span>
+                      </div>
+                      <h5 className="text-sm font-black text-slate-800 mb-1.5">{menu.name}</h5>
+                      <p className="text-[10px] text-slate-500 leading-tight mb-3 break-keep">{menu.desc}</p>
+                      <div className="flex gap-1.5">
+                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50/70 border border-blue-100 px-1.5 py-0.5 rounded-md">탄 {menu.carbs}g</span>
+                        <span className="text-[10px] font-bold text-green-600 bg-green-50/70 border border-green-100 px-1.5 py-0.5 rounded-md">단 {menu.protein}g</span>
+                        <span className="text-[10px] font-bold text-amber-600 bg-amber-50/70 border border-amber-100 px-1.5 py-0.5 rounded-md">지 {menu.fat}g</span>
+                      </div>
                     </div>
-                    <h5 className="text-sm font-black text-slate-800 mb-1.5">{menu.name}</h5>
-                    <p className="text-[10px] text-slate-500 leading-tight mb-3 break-keep">{menu.desc}</p>
-                    <div className="flex gap-1.5">
-                      <span className="text-[10px] font-bold text-blue-600 bg-blue-50/70 border border-blue-100 px-1.5 py-0.5 rounded-md">탄 {menu.carbs}g</span>
-                      <span className="text-[10px] font-bold text-green-600 bg-green-50/70 border border-green-100 px-1.5 py-0.5 rounded-md">단 {menu.protein}g</span>
-                      <span className="text-[10px] font-bold text-amber-600 bg-amber-50/70 border border-amber-100 px-1.5 py-0.5 rounded-md">지 {menu.fat}g</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                // 식단 미입력 시 안내 메시지
+                <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+                  <span className="text-3xl mb-2">🍽️</span>
+                  <p className="text-xs font-bold text-center">아침, 점심, 저녁 중 하나를 입력하면<br/>AI가 맞춤 메뉴를 추천해드려요.</p>
+                </div>
+              )}
             </div>
 
           </div>
@@ -651,8 +906,12 @@ export default function Home() {
                             <span className="text-[10px] font-bold text-amber-600 bg-amber-50/80 px-1.5 py-0.5 rounded-md border border-amber-100">지 {item.fat}g</span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3 flex-shrink-0 self-end sm:self-auto text-right">
+                        <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-auto text-right">
                           <span className="w-14 text-sm font-black text-orange-500">{item.calories} kcal</span>
+                          {/* 식단 상세에서 바로 즐겨찾기 토글 */}
+                          <button onClick={() => toggleFavorite(item)} className={`transition-all opacity-100 sm:opacity-0 group-hover:opacity-100 ${isFavorite(item.name) ? 'text-amber-400' : 'text-slate-300 hover:text-amber-300'}`} title={isFavorite(item.name) ? '즐겨찾기 해제' : '즐겨찾기 추가'}>
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill={isFavorite(item.name) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
+                          </button>
                           <button onClick={() => handleRemoveFood(type, idx)} className="w-6 h-6 flex items-center justify-center rounded text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-100 sm:opacity-0 group-hover:opacity-100 flex-shrink-0">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                           </button>
@@ -680,51 +939,90 @@ export default function Home() {
         );
       })()}
 
-      {/* ════ 메뉴 검색 및 즐겨찾기 모달 ════ */}
-      {isSearchOpen && (() => {
-        const filteredFoods = DUMMY_FOOD_DB.filter(food => food.name.includes(searchQuery));
-        const sortedFoods = [...filteredFoods].sort((a, b) => {
-          const aFav = favorites.includes(a.name);
-          const bFav = favorites.includes(b.name);
-          if (aFav && !bFav) return -1;
-          if (!aFav && bFav) return 1;
-          return 0;
-        });
-
-        return (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4" onClick={(e) => { if (e.target === e.currentTarget) closeSearch(); }}>
-            <div className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-              <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                <h3 className="font-bold text-slate-800">{MEAL_CFG[searchMealType]?.emoji} {MEAL_CFG[searchMealType]?.label} 메뉴 검색</h3>
-                <button onClick={closeSearch} className="text-slate-400 hover:text-red-500"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+      {/* ════ 메뉴 검색 모달 ════ */}
+      {isSearchOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4" onClick={(e) => { if (e.target === e.currentTarget) closeSearch(); }}>
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="font-bold text-slate-800">{MEAL_CFG[searchMealType]?.emoji} {MEAL_CFG[searchMealType]?.label} 메뉴 검색</h3>
+              <button onClick={closeSearch} className="text-slate-400 hover:text-red-500"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <div className="p-6">
+              <div className="relative mb-4">
+                <input type="text" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); handleSearchFood(e.target.value); }} placeholder="음식명을 입력하세요 (예: 마라탕, 치킨)" className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm outline-none focus:border-orange-400 focus:bg-white transition-all text-slate-800 font-bold" autoFocus />
+                <svg className="w-4 h-4 absolute left-4 top-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
               </div>
-              <div className="p-6">
-                <div className="relative mb-4">
-                  <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="음식명을 입력하세요 (예: 마라탕, 치킨)" className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm outline-none focus:border-orange-400 focus:bg-white transition-all text-slate-800 font-bold" autoFocus />
-                  <svg className="w-4 h-4 absolute left-4 top-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                </div>
-                
-                <div className="h-64 overflow-y-auto space-y-1.5 pr-1">
-                  {sortedFoods.length > 0 ? (
-                    sortedFoods.map((food) => (
-                      <div key={food.name} onClick={() => handleSelectFoodItem(food)}
-                        className="w-full text-left flex items-center px-4 py-3 rounded-xl border border-slate-100 hover:border-orange-200 hover:bg-orange-50/50 group transition-all cursor-pointer">
-                        <button onClick={(e) => { e.stopPropagation(); toggleFavorite(food.name); }} className="mr-2 text-lg focus:outline-none transition-transform hover:scale-110">
-                          {favorites.includes(food.name) ? '⭐' : '☆'}
-                        </button>
-                        <span className="flex-1 text-xs sm:text-sm font-bold text-slate-700 group-hover:text-orange-600 transition-colors">{food.name}</span>
-                        <span className="text-xs sm:text-sm font-black text-orange-500 flex-shrink-0">{food.calories} kcal</span>
-                      </div>
-                    ))
+
+              {/* 즐겨찾기 섹션 - 검색어 없을 때 항상 표시 */}
+              {!searchQuery && (
+                <div className="mb-4">
+                  <p className="text-[10px] font-extrabold text-amber-500 mb-2 flex items-center gap-1">
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+                    즐겨찾기
+                  </p>
+                  {favorites.length === 0 ? (
+                    <div className="text-center py-3 text-slate-400 text-xs font-bold bg-slate-50/80 rounded-xl border border-dashed border-slate-200">
+                      검색 후 ★ 버튼을 눌러 즐겨찾기에 추가하세요
+                    </div>
                   ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10"><p className="text-sm">검색 결과가 없습니다.</p></div>
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                      {favorites.map((food, idx) => (
+                        <div key={idx} className="flex items-center px-4 py-2.5 rounded-xl border border-amber-100 bg-amber-50/50 hover:bg-amber-50 transition-all">
+                          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleSelectFoodItem(food)}>
+                            <span className="text-sm font-bold text-slate-700">{food.name}</span>
+                            <span className="text-xs font-bold text-amber-500 ml-2">{food.calories} kcal</span>
+                          </div>
+                          {/* 별 눌러서 즐겨찾기 해제 */}
+                          <button onClick={() => toggleFavorite(food)} className="ml-2 text-amber-400 hover:text-slate-400 transition-colors flex-shrink-0" title="즐겨찾기 해제">
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   )}
+                  <div className="border-t border-slate-100 mt-3 mb-1" />
                 </div>
+              )}
+
+              <div className="h-52 overflow-y-auto space-y-1.5 pr-1">
+                {isSearchLoading ? (
+                  <div className="flex justify-center items-center h-full"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500" /></div>
+                ) : searchResults.length > 0 ? (
+                  // 검색 결과 - 각 항목에 ⭐ 즐겨찾기 버튼 추가
+                  (searchResults as any[]).map((food, idx) => {
+                    const foodObj = {
+                      name: food.makerName ? `[${food.makerName}] ${food.foodName}` : food.foodName,
+                      calories: food.calories,
+                      carbs: food.carbohydrate,
+                      protein: food.protein,
+                      fat: food.fat,
+                      sodium: food.sodium,
+                    };
+                    return (
+                      <div key={idx} className="flex items-center px-4 py-3 rounded-xl border border-slate-100 hover:border-orange-200 hover:bg-orange-50/50 transition-all">
+                        {/* 음식 정보 클릭 → 용량 선택 */}
+                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleSelectFoodItem(foodObj)}>
+                          {food.makerName && <span className="text-[10px] font-bold text-slate-400">{food.makerName} · </span>}
+                          <span className="text-sm font-bold text-slate-700">{food.foodName}</span>
+                          <span className="text-sm font-black text-orange-500 ml-2">{Math.round(food.calories)} kcal</span>
+                        </div>
+                        {/* 즐겨찾기 토글 버튼 */}
+                        <button onClick={() => toggleFavorite(foodObj)} className={`ml-2 flex-shrink-0 transition-all ${isFavorite(foodObj.name) ? 'text-amber-400' : 'text-slate-300 hover:text-amber-300'}`} title={isFavorite(foodObj.name) ? '즐겨찾기 해제' : '즐겨찾기 추가'}>
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill={isFavorite(foodObj.name) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
+                        </button>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10">
+                    <p className="text-sm">{searchQuery ? '검색 결과가 없습니다.' : favorites.length === 0 ? '음식명을 입력하세요.' : '음식명을 입력하세요.'}</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        );
-      })()}
+        </div>
+      )}
 
       {/* ════ 용량 조절 모달 ════ */}
       {selectedFoodForDetail && (
@@ -732,9 +1030,15 @@ export default function Home() {
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
             <div className="bg-gradient-to-r from-orange-400 to-amber-500 px-6 py-5 flex justify-between items-center text-white">
               <h3 className="text-lg font-black tracking-tight">섭취 용량 설정</h3>
-              <button onClick={() => setSelectedFoodForDetail(null)} className="text-white/80 hover:text-white transition-colors">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
+              <div className="flex items-center gap-2">
+                {/* 용량 설정 화면에서 바로 즐겨찾기 토글 */}
+                <button onClick={() => toggleFavorite(selectedFoodForDetail)} className={`transition-all ${isFavorite(selectedFoodForDetail.name) ? 'text-amber-300' : 'text-white/50 hover:text-amber-200'}`} title={isFavorite(selectedFoodForDetail.name) ? '즐겨찾기 해제' : '즐겨찾기 추가'}>
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill={isFavorite(selectedFoodForDetail.name) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
+                </button>
+                <button onClick={() => setSelectedFoodForDetail(null)} className="text-white/80 hover:text-white transition-colors">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
             </div>
             <div className="p-6">
               <div className="text-center mb-6">
@@ -797,16 +1101,33 @@ export default function Home() {
               <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 mb-6 shadow-inner min-h-[110px] flex items-center justify-center">
                 {analysisStatus === 'idle' && <div className="text-center text-slate-400"><p className="text-xs font-medium">사진을 등록한 후 분석 시작 버튼을 누르세요.</p></div>}
                 {analysisStatus === 'analyzing' && <div className="text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-3" /><p className="text-xs font-bold text-orange-600">AI 푸드 렌즈 가동 중...</p></div>}
-                {analysisStatus === 'done' && (
-                  <div className="w-full">
-                    <div className="flex items-center gap-2.5 mb-3 border-b border-slate-100 pb-2.5"><h4 className="text-sm font-black text-slate-800">분석 완료: 후라이드 치킨 반마리</h4></div>
-                    <div className="grid grid-cols-5 gap-2 text-center">
-                      {[{ label: '탄수화물', val: '25g', color: 'text-blue-600' }, { label: '단백질', val: '45g', color: 'text-green-600' }, { label: '지방', val: '35g', color: 'text-amber-600' }, { label: '칼로리', val: '650', color: 'text-orange-500 font-bold' }, { label: '나트륨', val: '850mg', color: 'text-red-500' }].map(({ label, val, color }) => (
-                        <div key={label} className="bg-white p-1.5 rounded-lg border border-slate-100"><span className="block text-[9px] font-bold text-slate-400">{label}</span><span className={`text-[10px] font-black mt-0.5 block ${color}`}>{val}</span></div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                 
+                {analysisStatus === 'done' && analysisResult && (
+  <div className="w-full space-y-2">
+    <h4 className="text-sm font-black text-slate-800 mb-2">분석 완료 ✅</h4>
+    {/* 각 음식 카드를 클릭하면 체크/언체크 토글, 선택된 항목은 초록 테두리로 표시 */}
+    {analysisResult.map((food, idx) => (
+      <div key={idx}
+        onClick={() => setSelectedFoods(prev =>
+          prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+        )}
+        className={`rounded-xl p-3 border cursor-pointer transition-all ${
+          selectedFoods.includes(idx) ? 'border-green-400 bg-green-50' : 'bg-white border-slate-100'
+        }`}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm">{selectedFoods.includes(idx) ? '✅' : '⬜'}</span>
+          <p className="text-sm font-black text-slate-800">{food.name}</p>
+        </div>
+        <div className="flex gap-2 flex-wrap pl-6">
+          <span className="text-[10px] font-bold text-blue-600">탄 {food.carbs}g</span>
+          <span className="text-[10px] font-bold text-green-600">단 {food.protein}g</span>
+          <span className="text-[10px] font-bold text-amber-600">지 {food.fat}g</span>
+          <span className="text-[10px] font-bold text-orange-500">{food.calories}kcal</span>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 {analysisStatus !== 'done' ? (

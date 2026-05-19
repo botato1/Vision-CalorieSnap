@@ -52,15 +52,79 @@ JSON만 답해줘, 다른 말 하지 말고. 코드블록도 쓰지 말고." }
             var responseBody = await response.Content.ReadAsStringAsync();
 
             // Gemini 응답에서 텍스트 부분만 추출
+            Console.WriteLine(responseBody);
             var doc = JsonDocument.Parse(responseBody);
-            var result = doc.RootElement
-                .GetProperty("candidates")[0]
+
+            // 에러 응답 처리 (503, 403 등)
+            if (doc.RootElement.TryGetProperty("error", out var errorElement))
+            {
+                var errorMsg = errorElement.TryGetProperty("message", out var msg) ? msg.GetString() : "알 수 없는 오류";
+                throw new Exception($"Gemini API 오류: {errorMsg}");
+            }
+
+            if (!doc.RootElement.TryGetProperty("candidates", out var candidates))
+                throw new Exception("Gemini 응답에 candidates가 없습니다.");
+
+            var result = candidates[0]
                 .GetProperty("content")
                 .GetProperty("parts")[0]
                 .GetProperty("text")
                 .GetString();
 
             return result!;
+        }
+
+        // 부족한 영양소 기반으로 배달 메뉴 2개를 추천받는 메서드
+        public async Task<string> RecommendMenuAsync(double remainingCalories, double remainingProtein, double remainingCarbs, double remainingFat)
+        {
+            var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
+
+            var prompt = $@"오늘 식단에서 아래 영양소가 부족합니다.
+- 칼로리: {remainingCalories:F0}kcal 부족
+- 단백질: {remainingProtein:F0}g 부족
+- 탄수화물: {remainingCarbs:F0}g 부족
+- 지방: {remainingFat:F0}g 부족
+
+이 영양소를 보충할 수 있는 한국 음식 메뉴 2개를 추천해줘.
+아래 JSON 형식으로만 답해줘. 다른 말 하지 말고. 코드블록도 쓰지 말고.
+[
+  {{
+    ""name"": ""메뉴 이름"",
+    ""calories"": 칼로리(kcal),
+    ""protein"": 단백질(g),
+    ""carbs"": 탄수화물(g),
+    ""fat"": 지방(g),
+    ""desc"": ""추천 이유 한 문장""
+  }}
+]";
+
+            var requestBody = new
+            {
+                contents = new[] { new { parts = new object[] { new { text = prompt } } } }
+            };
+
+            var json = JsonSerializer.Serialize(requestBody);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(url, content);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            var doc = JsonDocument.Parse(responseBody);
+
+            if (doc.RootElement.TryGetProperty("error", out var errorElement))
+            {
+                var errorMsg = errorElement.TryGetProperty("message", out var msg) ? msg.GetString() : "알 수 없는 오류";
+                // 실제 에러 내용을 콘솔에 출력해서 디버깅에 사용
+                Console.WriteLine($"[Gemini RecommendMenu Error] {errorMsg}");
+                throw new Exception($"Gemini API 오류: {errorMsg}");
+            }
+
+            if (!doc.RootElement.TryGetProperty("candidates", out var candidates))
+            {
+                Console.WriteLine($"[Gemini RecommendMenu] candidates 없음: {responseBody}");
+                throw new Exception("Gemini 응답에 candidates가 없습니다.");
+            }
+
+            return candidates[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString()!;
         }
     }
 }
