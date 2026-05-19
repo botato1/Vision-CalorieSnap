@@ -56,7 +56,7 @@ namespace FoodAI.API.DTOs
 
         public class UserProfileResponse
         {
-            public int ProfileID { get; set; }
+            public string ProfileID { get; set; } = string.Empty;
 
             public string Name { get; set; } = string.Empty;
             public bool Male { get; set; }

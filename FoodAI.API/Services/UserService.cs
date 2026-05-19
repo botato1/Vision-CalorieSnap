@@ -3,6 +3,7 @@ using FoodAI.API.Infrastructure;
 using FoodAI.API.Models;
 using Microsoft.Data.SqlClient;
 using static FoodAI.API.DTOs.UserProfileDto;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace FoodAI.API.Services
 {
@@ -15,7 +16,7 @@ namespace FoodAI.API.Services
             _db = db;
         }
         //----------Get---------------------------------------------------------
-        public async Task<UserProfile?> GetByIdAsync(int profileId)
+        public async Task<UserProfile?> GetByIdAsync(string profileId)
         {
             const string sql = @"
                 SELECT ProfileID, Name, Male, Height, Weight,
@@ -40,8 +41,25 @@ namespace FoodAI.API.Services
         public async Task<int> CreateAsync(UserProfile profile)
         {
 
+            const string sql = @"
+                INSERT INTO UserProfile (ProfileID, Name, Male, Height, Weight, BirthDate, TargetCalories)
+                VALUES (@ProfileID,@Name, @Male, @Height, @Weight, @BirthDate, @TargetCalories);
+                SELECT SCOPE_IDENTITY();";
 
-            throw new NotImplementedException();
+            using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@ProfileID", profile.Name);
+            cmd.Parameters.AddWithValue("@Name", profile.Name);
+            cmd.Parameters.AddWithValue("@Male", profile.Male);
+            cmd.Parameters.AddWithValue("@Height", profile.Height);
+            cmd.Parameters.AddWithValue("@Weight", profile.Weight);
+            cmd.Parameters.AddWithValue("@BirthDate", (object?)profile.BirthDate ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@TargetCalories", profile.TargetCalories);
+
+            var result = await cmd.ExecuteScalarAsync();
+            return Convert.ToInt32(result);
         }
 
         
@@ -49,16 +67,52 @@ namespace FoodAI.API.Services
 
         public async Task<bool> UpdateAsync(UserProfile profile)
         {
-            throw new NotImplementedException();
+            const string sql = @"
+                UPDATE UserProfile
+                SET    Name           = @Name,
+                       Male           = @Male,
+                       Height         = @Height,
+                       Weight         = @Weight,
+                       BirthDate      = @BirthDate,
+                       TargetCalories = @TargetCalories
+                WHERE  ProfileID = @ProfileID";
+
+            using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@ProfileID", profile.ProfileID);
+            cmd.Parameters.AddWithValue("@Name", profile.Name);
+            cmd.Parameters.AddWithValue("@Male", profile.Male);
+            cmd.Parameters.AddWithValue("@Height", profile.Height);
+            cmd.Parameters.AddWithValue("@Weight", profile.Weight);
+            cmd.Parameters.AddWithValue("@BirthDate", (object?)profile.BirthDate ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@TargetCalories", profile.TargetCalories);
+
+            var affected = await cmd.ExecuteNonQueryAsync();
+            return affected > 0;
         }
 
         //---------------DELETE--------------------------------------------
 
-        public async Task<bool> DeleteAsync(UserProfile profile)
+        public async Task<bool> DeleteAsync(string ProfileID)
         {
-            throw new NotImplementedException();
-        }
+            const string sql = @"
+                DELETE 
+                FROM UserProfile
+                WHERE ProfileID = @ProfileID";
 
+            using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@ProfileID", ProfileID);
+
+
+            var affected = await cmd.ExecuteNonQueryAsync();
+            return affected > 0;
+        }
+        
 
         // DTO ↔ 모델 변환 (static)
         /// <summary>등록 Request → 모델</summary>
@@ -73,7 +127,7 @@ namespace FoodAI.API.Services
         };
 
         /// <summary>수정 Request → 모델</summary>
-        public static UserProfile ToModel(UpdateUserProfileRequest dto, int profileId) => new()
+        public static UserProfile ToModel(UpdateUserProfileRequest dto, string profileId) => new()
         {
             ProfileID = profileId,
             Name = dto.Name,
@@ -101,7 +155,7 @@ namespace FoodAI.API.Services
         // ── 내부 헬퍼 ────────────────────────────────────────
         private static UserProfile MapToModel(SqlDataReader reader) => new()
         {
-            ProfileID = reader.GetInt32(reader.GetOrdinal("ProfileID")),
+            ProfileID = reader.GetString(reader.GetOrdinal("ProfileID")),
             Name = reader.GetString(reader.GetOrdinal("Name")),
             Male = reader.GetBoolean(reader.GetOrdinal("Male")),
             Height = reader.GetDouble(reader.GetOrdinal("Height")),
@@ -121,5 +175,6 @@ namespace FoodAI.API.Services
             _ => "비만"
         };
 
+        
     }
 }
