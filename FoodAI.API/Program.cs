@@ -71,6 +71,10 @@ builder.Services.AddScoped<
     IOpenAiService,
     GeminiService>();
 
+builder.Services.AddScoped<
+    IFoodNutritionService,
+    FoodNutritionService>();
+
 var app = builder.Build();
 
 // Swagger
