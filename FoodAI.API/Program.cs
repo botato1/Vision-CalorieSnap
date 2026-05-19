@@ -1,5 +1,5 @@
-
-﻿using FoodAI.API.Infrastructure;
+﻿using FoodAI.API.Services.Interfaces;
+using FoodAI.API.Infrastructure;
 using FoodAI.API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
