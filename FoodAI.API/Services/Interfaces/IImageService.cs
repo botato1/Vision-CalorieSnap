@@ -1,4 +1,4 @@
-﻿namespace FoodAI.API.Services
+﻿namespace FoodAI.API.Services.Interfaces
 {
     public interface IImageService
     {
