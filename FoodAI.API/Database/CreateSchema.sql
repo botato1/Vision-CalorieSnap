@@ -16,7 +16,7 @@ GO
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE dbo.UserProfile
 (
-    ProfileID        INT             IDENTITY(1,1) PRIMARY KEY,
+    ProfileID        INT             PRIMARY KEY,
     Name             NVARCHAR(50)    NOT NULL,
     Male             BIT             NOT NULL,              -- 1: 남, 0: 여
     Height           FLOAT           NOT NULL,              -- cm
