@@ -1,4 +1,4 @@
-﻿namespace FoodAI.API.Services
+﻿namespace FoodAI.API.Services.Interfaces
 {
     // AI 이미지 분석 서비스의 인터페이스 (설계도)
 
