@@ -39,6 +39,46 @@ namespace FoodAI.API.Services
             return MapToModel(reader);
         }
 
+        // ── EXISTS ───────────────────────────────────────────
+        public async Task<bool> ExistsAsync(string profileId)
+        {
+            const string sql = "SELECT COUNT(*) FROM UserProfile WHERE ProfileID = @ProfileID";
+
+            using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@ProfileID", profileId);
+
+            var count = (int)(await cmd.ExecuteScalarAsync() ?? 0);
+            return count > 0;
+        }
+        //------------POST------------------------------------------------------
+        public async Task<string> CreateAsync(UserProfile profile)
+        {
+
+            const string sql = @"
+                INSERT INTO UserProfile (ProfileID,ProfilePW, Name, Male, Height, Weight, BirthDate, TargetCalories)
+                VALUES (@ProfileID,@ProfilePW,@Name, @Male, @Height, @Weight, @BirthDate, @TargetCalories);
+                ";
+
+            using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@ProfileID", profile.ProfileID);
+            cmd.Parameters.AddWithValue("@ProfilePW", profile.ProfilePW);
+            cmd.Parameters.AddWithValue("@Name", profile.Name);
+            cmd.Parameters.AddWithValue("@Male", profile.Male);
+            cmd.Parameters.AddWithValue("@Height", profile.Height);
+            cmd.Parameters.AddWithValue("@Weight", profile.Weight);
+            cmd.Parameters.AddWithValue("@BirthDate", (object?)profile.BirthDate ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@TargetCalories", profile.TargetCalories);
+
+            var result = await cmd.ExecuteScalarAsync();
+            return Convert.ToString(result) ?? "";
+        }
+
         
         //-------------UPDATE----------------------------------------------
 

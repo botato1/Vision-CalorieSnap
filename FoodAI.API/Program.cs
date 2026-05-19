@@ -18,7 +18,7 @@ builder.Services.AddHttpClient();
 // GeminiService를 DI 컨테이너에 등록
 builder.Services.AddScoped<IOpenAiService, GeminiService>();
 
-builder.Services.AddScoped<IAuthService, AuthService>();
+
 builder.Services.AddScoped<IUserService, UserService>();
 // 이미지 서비스 (구현체 만들면 ImageService로 교체)
 //builder.Services.AddScoped<IImageService, ImageService>();
