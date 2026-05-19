@@ -105,8 +105,8 @@ GO
 -- ─────────────────────────────────────────────────────────────
 -- 5. 초기 데이터 (Seed)
 -- ─────────────────────────────────────────────────────────────
-INSERT INTO dbo.UserProfile (Name, Male, Height, Weight, BirthDate, TargetCalories)
-VALUES (N'기본 사용자', 1, 175, 70, '1995-01-01', 2000);
+INSERT INTO dbo.UserProfile (ProfileID,ProfilePW,Name, Male, Height, Weight, BirthDate, TargetCalories)
+VALUES ('admin','1234','기본 사용자', 1, 175, 70, '1995-01-01', 2000);
 GO
 
 PRINT N'✓ 스키마 생성 완료';
