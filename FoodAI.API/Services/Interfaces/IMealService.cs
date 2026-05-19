@@ -15,8 +15,12 @@ public interface IMealService
     // ─────────────────────────────────────────────
     // 음식 추가
     // ─────────────────────────────────────────────
-    Task AddFoodAsync(
+    Task<int> AddFoodAsync(
         AddMealFoodRequest request
+    );
+
+    Task DeleteFoodAsync(
+        int mealFoodId
     );
 
     // ─────────────────────────────────────────────

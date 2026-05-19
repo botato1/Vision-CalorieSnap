@@ -83,6 +83,18 @@ namespace FoodAI.API.Controllers
                 message = exists ? "이미 사용 중인 ID입니다." : "사용 가능한 ID입니다."
             });
         }
+
+        // GET /api/auth/{profileId}
+        [HttpGet("{profileId}")]
+        public async Task<IActionResult> GetProfile(string profileId)
+        {
+            var profile = await _userService.GetByIdAsync(profileId);
+
+            if (profile is null)
+                return NotFound(new { message = $"프로필을 찾을 수 없습니다: {profileId}" });
+
+            return Ok(UserService.ToResponse(profile));
+        }
         [HttpPatch("{profileId}/body")]
         //회원 정보 수정
         public async Task<IActionResult> UpdateUser(string profileId, [FromBody] UpdateUserProfileRequest request)
