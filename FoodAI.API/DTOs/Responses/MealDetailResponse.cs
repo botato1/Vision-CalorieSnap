@@ -7,7 +7,7 @@ public class MealDetailResponse
 {
     public int MealID { get; set; }
 
-    public int ProfileID { get; set; }
+    public string ProfileID { get; set; } = string.Empty;
 
     public MealType MealType { get; set; }
 

@@ -1,242 +1,274 @@
-﻿using FoodAI.API.DTOs.Requests;
+﻿using Dapper;
+
+using FoodAI.API.DTOs.Requests;
 using FoodAI.API.DTOs.Responses;
-using FoodAI.API.Models;
+using FoodAI.API.Infrastructure;
 using FoodAI.API.Services.Interfaces;
 
 namespace FoodAI.API.Services;
 
 public class MealService : IMealService
 {
-    // 임시 메모리 저장소
-    private static readonly List<MealRecord> _meals = new();
-    private static readonly List<MealFood> _foods = new();
+    private readonly DatabaseContext _db;
 
+    public MealService(
+        DatabaseContext db
+    )
+    {
+        _db = db;
+    }
+
+    // ─────────────────────────────────────────────
     // 식사 생성
+    // ─────────────────────────────────────────────
     public async Task<int> CreateMealAsync(
         CreateMealRecordRequest request
     )
     {
-        var meal = new MealRecord
-        {
-            MealID = _meals.Count + 1,
+        const string sql = """
+    INSERT INTO MealRecords
+    (
+        ProfileID,
+        MealType,
+        MealDate
+    )
+    VALUES
+    (
+        @ProfileID,
+        @MealType,
+        @MealDate
+    );
 
-            ProfileID = request.ProfileID,
+    SELECT CAST(SCOPE_IDENTITY() as int);
+    """;
 
-            MealType = request.MealType,
+        using var conn =
+            _db.CreateConnection();
 
-            MealDate = request.MealDate,
+        var mealId =
+            await conn.ExecuteScalarAsync<int>(
+                sql,
+                new
+                {
+                    request.ProfileID,
 
-            MealTime = request.MealTime,
+                    MealType =
+                        (byte)request.MealType,
 
-            CreatedAt = DateTime.Now
-        };
+                    request.MealDate
+                });
 
-        _meals.Add(meal);
-
-        return await Task.FromResult(meal.MealID);
+        return mealId;
     }
 
-
+    // ─────────────────────────────────────────────
     // 음식 추가
+    // ─────────────────────────────────────────────
     public async Task AddFoodAsync(
         AddMealFoodRequest request
     )
     {
-        var food = new MealFood
-        {
-            MealFoodID = _foods.Count + 1,
+        const string sql = """
+        INSERT INTO MealFoods
+        (
+            MealID,
+            FoodName,
+            IntakeAmount,
+            Calories,
+            Protein,
+            Carbohydrate,
+            Fat,
+            Sodium,
+            Sugar
+        )
+        VALUES
+        (
+            @MealID,
+            @FoodName,
+            @IntakeAmount,
+            @Calories,
+            @Protein,
+            @Carbohydrate,
+            @Fat,
+            @Sodium,
+            @Sugar
+        );
+        """;
 
-            MealID = request.MealID,
+        using var conn =
+            _db.CreateConnection();
 
-            FoodName = request.FoodName,
-
-            IntakeAmount = request.IntakeAmount,
-
-            Calories = request.Calories,
-
-            Protein = request.Protein,
-
-            Carbohydrate = request.Carbohydrate,
-
-            Fat = request.Fat,
-
-            Sodium = request.Sodium,
-
-            Sugar = request.Sugar
-        };
-
-        _foods.Add(food);
-
-        await Task.CompletedTask;
+        await conn.ExecuteAsync(
+            sql,
+            request
+        );
     }
 
+    // ─────────────────────────────────────────────
     // 전체 식사 조회
+    // ─────────────────────────────────────────────
     public async Task<List<MealRecordResponse>>
-        GetMealsAsync(int profileId)
+        GetMealsAsync(
+            string profileId
+        )
     {
-        var meals = _meals
-            .Where(m => m.ProfileID == profileId)
-            .ToList();
+        const string sql = """
+        SELECT
+            MealID,
+            MealType,
+            MealDate,
+            TotalCalories,
+            TotalProtein,
+            TotalCarb,
+            TotalFat
+        FROM vw_MealTotals
+        WHERE ProfileID = @ProfileID
+        ORDER BY MealDate DESC
+        """;
 
-        var result = meals
-            .Select(m =>
-            {
-                var foods = _foods
-                    .Where(f => f.MealID == m.MealID)
-                    .ToList();
+        using var conn =
+            _db.CreateConnection();
 
-                return new MealRecordResponse
-                {
-                    MealID = m.MealID,
+        var meals =
+            await conn.QueryAsync
+                <MealRecordResponse>(
+                    sql,
+                    new
+                    {
+                        ProfileID = profileId
+                    });
 
-                    MealType = m.MealType,
-
-                    MealDate = m.MealDate,
-
-                    MealTime = m.MealTime,
-
-                    TotalCalories =
-                        foods.Sum(f => f.Calories),
-
-                    TotalProtein =
-                        foods.Sum(f => f.Protein),
-
-                    TotalCarb =
-                        foods.Sum(f => f.Carbohydrate),
-
-                    TotalFat =
-                        foods.Sum(f => f.Fat)
-                };
-            })
-            .ToList();
-
-        return await Task.FromResult(result);
+        return meals.ToList();
     }
 
+    // ─────────────────────────────────────────────
     // 날짜별 조회
+    // ─────────────────────────────────────────────
     public async Task<List<MealRecordResponse>>
-        GetMealsByDateAsync(int profileId, DateTime date)
+        GetMealsByDateAsync(
+            string profileId,
+            DateTime date
+        )
     {
-        var meals = _meals
-            .Where(m =>
-                m.ProfileID == profileId &&
-                m.MealDate.Date == date.Date)
-            .ToList();
+        const string sql = """
+        SELECT
+            MealID,
+            MealType,
+            MealDate,
+            TotalCalories,
+            TotalProtein,
+            TotalCarb,
+            TotalFat
+        FROM vw_MealTotals
+        WHERE
+            ProfileID = @ProfileID
+            AND MealDate = @MealDate
+        ORDER BY MealDate DESC
+        """;
 
-        var result = meals
-            .Select(m =>
-            {
-                var foods = _foods
-                    .Where(f => f.MealID == m.MealID)
-                    .ToList();
+        using var conn =
+            _db.CreateConnection();
 
-                return new MealRecordResponse
-                {
-                    MealID = m.MealID,
+        var meals =
+            await conn.QueryAsync
+                <MealRecordResponse>(
+                    sql,
+                    new
+                    {
+                        ProfileID = profileId,
 
-                    MealType = m.MealType,
+                        MealDate = date.Date
+                    });
 
-                    MealDate = m.MealDate,
-
-                    MealTime = m.MealTime,
-
-                    TotalCalories =
-                        foods.Sum(f => f.Calories),
-
-                    TotalProtein =
-                        foods.Sum(f => f.Protein),
-
-                    TotalCarb =
-                        foods.Sum(f => f.Carbohydrate),
-
-                    TotalFat =
-                        foods.Sum(f => f.Fat)
-                };
-            })
-            .ToList();
-
-        return await Task.FromResult(result);
+        return meals.ToList();
     }
 
+    // ─────────────────────────────────────────────
     // 상세 조회
-
+    // ─────────────────────────────────────────────
     public async Task<MealDetailResponse?>
-        GetMealDetailAsync(int mealId)
+        GetMealDetailAsync(
+            int mealId
+        )
     {
-        var meal = _meals
-            .FirstOrDefault(m => m.MealID == mealId);
+        const string mealSql = """
+        SELECT
+            MealID,
+            ProfileID,
+            MealType,
+            MealDate,
+            TotalCalories,
+            TotalProtein,
+            TotalCarb,
+            TotalFat
+        FROM vw_MealTotals
+        WHERE MealID = @MealID
+        """;
+
+        const string foodSql = """
+        SELECT
+            MealFoodID,
+            FoodName,
+            IntakeAmount,
+            Calories,
+            Protein,
+            Carbohydrate,
+            Fat,
+            Sodium,
+            Sugar
+        FROM MealFoods
+        WHERE MealID = @MealID
+        """;
+
+        using var conn =
+            _db.CreateConnection();
+
+        var meal =
+            await conn.QueryFirstOrDefaultAsync
+                <MealDetailResponse>(
+                    mealSql,
+                    new
+                    {
+                        MealID = mealId
+                    });
 
         if (meal == null)
             return null;
 
-        var foods = _foods
-            .Where(f => f.MealID == mealId)
-            .ToList();
-
-        var response = new MealDetailResponse
-        {
-            MealID = meal.MealID,
-
-            ProfileID = meal.ProfileID,
-
-            MealType = meal.MealType,
-
-            MealDate = meal.MealDate,
-
-            MealTime = meal.MealTime,
-
-            TotalCalories =
-                foods.Sum(f => f.Calories),
-
-            TotalProtein =
-                foods.Sum(f => f.Protein),
-
-            TotalCarb =
-                foods.Sum(f => f.Carbohydrate),
-
-            TotalFat =
-                foods.Sum(f => f.Fat),
-
-            Foods = foods
-                .Select(f =>
-                    new MealFoodResponse
+        var foods =
+            await conn.QueryAsync
+                <MealFoodResponse>(
+                    foodSql,
+                    new
                     {
-                        MealFoodID = f.MealFoodID,
+                        MealID = mealId
+                    });
 
-                        FoodName = f.FoodName,
+        meal.Foods = foods.ToList();
 
-                        IntakeAmount = f.IntakeAmount,
-
-                        Calories = f.Calories,
-
-                        Protein = f.Protein,
-
-                        Carbohydrate = f.Carbohydrate,
-
-                        Fat = f.Fat,
-
-                        Sodium = f.Sodium,
-
-                        Sugar = f.Sugar
-                    })
-                .ToList()
-        };
-
-        return await Task.FromResult(response);
+        return meal;
     }
 
-    // 식사 삭제
-
+    // ─────────────────────────────────────────────
+    // 삭제
+    // ─────────────────────────────────────────────
     public async Task DeleteMealAsync(
         int mealId
     )
     {
-        _meals.RemoveAll(m =>
-            m.MealID == mealId);
+        const string sql = """
+        DELETE FROM MealRecords
+        WHERE MealID = @MealID
+        """;
 
-        _foods.RemoveAll(f =>
-            f.MealID == mealId);
+        using var conn =
+            _db.CreateConnection();
 
-        await Task.CompletedTask;
+        await conn.ExecuteAsync(
+            sql,
+            new
+            {
+                MealID = mealId
+            });
     }
 }
