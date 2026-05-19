@@ -1,9 +1,5 @@
-﻿
-﻿using FoodAI.API.Services.Interfaces;
-using FoodAI.API.Infrastructure;
-
+﻿using FoodAI.API.Infrastructure;
 using FoodAI.API.Services;
-
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +21,6 @@ builder.Services.AddScoped<IOpenAiService, GeminiService>();
 // builder.Services.AddScoped<IMealService, MealService>();
 
 builder.Services.AddControllers();
-
 builder.Services.AddEndpointsApiExplorer();
 //builder.Services.AddSwaggerGen();
 
@@ -39,39 +34,23 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy(
-        "AllowReact",
+    options.AddPolicy("AllowReact",
         policy =>
         {
             policy
                 .AllowAnyHeader()
                 .AllowAnyMethod()
-
-                //.AllowAnyOrigin();
-
                 .WithOrigins(
                  "http://localhost:5173",
                  "http://localhost:3000"   // CRA (Create React App)
                  );
-
         });
 });
 
-// DI 등록
-builder.Services.AddScoped<
-    IMealService,
-    MealService>();
-
-builder.Services.AddScoped<
-    IOpenAiService,
-    GeminiService>();
-
 var app = builder.Build();
 
-// Swagger
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -83,7 +62,6 @@ if (app.Environment.IsDevelopment())
 }
 
     // app.UseHttpsRedirection();
-
 
     app.UseCors("AllowReact");
 
