@@ -1,22 +1,157 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef, type ChangeEvent, type FormEvent } from 'react';
+const API_BASE = 'http://localhost:5260/api';
 
-// DB의 영양성분은 '100g'을 기준으로 한다고 가정합니다.
-const DUMMY_FOOD_DB = [
-  { name: '마라탕', calories: 620, carbs: 68, protein: 28, fat: 22, sodium: 2500 },
-  { name: '후라이드 치킨', calories: 650, carbs: 25, protein: 45, fat: 35, sodium: 850 },
-  { name: '연어 샐러드', calories: 320, carbs: 18, protein: 32, fat: 14, sodium: 320 },
-  { name: '페퍼로니 피자', calories: 540, carbs: 58, protein: 22, fat: 24, sodium: 980 },
-  { name: '김치찌개', calories: 280, carbs: 12, protein: 18, fat: 12, sodium: 1200 },
-  { name: '제육볶음', calories: 480, carbs: 22, protein: 34, fat: 20, sodium: 890 },
-  { name: '아메리카노', calories: 10, carbs: 1, protein: 0, fat: 0, sodium: 5 },
-  { name: '떡볶이', calories: 380, carbs: 72, protein: 8, fat: 6, sodium: 1100 },
-  { name: '현미밥', calories: 210, carbs: 44, protein: 5, fat: 2, sodium: 10 },
-  { name: '닭가슴살', calories: 165, carbs: 0, protein: 31, fat: 3, sodium: 150 },
-  { name: '프로틴 바', calories: 190, carbs: 20, protein: 21, fat: 6, sodium: 110 },
-  { name: '그릭 요거트', calories: 110, carbs: 6, protein: 10, fat: 4, sodium: 40 },
-];
+type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+type FoodItem = {
+  name: string;
+  calories: number;
+  carbs: number;
+  protein: number;
+  fat: number;
+  sodium?: number;
+  grams?: number;
+};
+
+type MealSlot = {
+  items: FoodItem[];
+  imgUrl: string | null;
+  mealId?: number;
+};
+
+type Meals = Record<MealType, MealSlot>;
+
+type ApiFoodSearchResult = {
+  foodName?: string;
+  FoodName?: string;
+  calories?: number;
+  Calories?: number;
+  carbohydrate?: number;
+  Carbohydrate?: number;
+  protein?: number;
+  Protein?: number;
+  fat?: number;
+  Fat?: number;
+  sodium?: number;
+  Sodium?: number;
+};
+
+type UserInfo = Record<'name' | 'gender' | 'age' | 'height' | 'weight' | 'job', string>;
+type GraphPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
+type AnalysisStatus = 'idle' | 'analyzing' | 'done' | 'error';
+
+type ApiMealRecord = {
+  mealID?: number;
+  MealID?: number;
+  mealType?: number | string;
+  MealType?: number | string;
+};
+
+type ApiMealDetail = ApiMealRecord & {
+  foods?: ApiMealFood[];
+  Foods?: ApiMealFood[];
+};
+
+type ApiMealFood = {
+  foodName?: string;
+  FoodName?: string;
+  intakeAmount?: number;
+  IntakeAmount?: number;
+  calories?: number;
+  Calories?: number;
+  protein?: number;
+  Protein?: number;
+  carbohydrate?: number;
+  Carbohydrate?: number;
+  fat?: number;
+  Fat?: number;
+  sodium?: number;
+  Sodium?: number;
+};
+
+type AnalyzeFoodResult = FoodItem & {
+  servingSize?: string;
+};
+
+type GeminiAnalyzeResult = {
+  foods?: Array<{
+    name?: string;
+    calories?: number;
+    protein?: number;
+    carbs?: number;
+    carbohydrate?: number;
+    fat?: number;
+    sodium?: number;
+    serving_size?: string;
+    servingSize?: string;
+  }>;
+};
+
+const createEmptyMeals = (): Meals => ({
+  breakfast: { items: [], imgUrl: null },
+  lunch: { items: [], imgUrl: null },
+  dinner: { items: [], imgUrl: null },
+  snack: { items: [], imgUrl: null },
+});
+
+const normalizeFoodSearchResult = (food: ApiFoodSearchResult): FoodItem => ({
+  name: food.foodName ?? food.FoodName ?? '',
+  calories: Math.round(Number(food.calories ?? food.Calories ?? 0)),
+  carbs: Math.round(Number(food.carbohydrate ?? food.Carbohydrate ?? 0)),
+  protein: Math.round(Number(food.protein ?? food.Protein ?? 0)),
+  fat: Math.round(Number(food.fat ?? food.Fat ?? 0)),
+  sodium: Math.round(Number(food.sodium ?? food.Sodium ?? 0)),
+});
+
+const mealTypeToApi: Record<MealType, number> = {
+  breakfast: 0,
+  lunch: 1,
+  dinner: 2,
+  snack: 3,
+};
+
+const apiMealTypeToMealType = (value: number | string | undefined): MealType | null => {
+  const normalized = typeof value === 'string' ? value.toLowerCase() : value;
+  if (normalized === 0 || normalized === '0' || normalized === 'breakfast') return 'breakfast';
+  if (normalized === 1 || normalized === '1' || normalized === 'lunch') return 'lunch';
+  if (normalized === 2 || normalized === '2' || normalized === 'dinner') return 'dinner';
+  if (normalized === 3 || normalized === '3' || normalized === 'snack') return 'snack';
+  return null;
+};
+
+const normalizeMealFood = (food: ApiMealFood): FoodItem => ({
+  name: food.foodName ?? food.FoodName ?? '',
+  grams: Math.round(Number(food.intakeAmount ?? food.IntakeAmount ?? 0)),
+  calories: Math.round(Number(food.calories ?? food.Calories ?? 0)),
+  carbs: Math.round(Number(food.carbohydrate ?? food.Carbohydrate ?? 0)),
+  protein: Math.round(Number(food.protein ?? food.Protein ?? 0)),
+  fat: Math.round(Number(food.fat ?? food.Fat ?? 0)),
+  sodium: Math.round(Number(food.sodium ?? food.Sodium ?? 0)),
+});
+
+const parseAnalyzeResult = (result: string): AnalyzeFoodResult | null => {
+  try {
+    const jsonText = result.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(jsonText) as GeminiAnalyzeResult;
+    const food = parsed.foods?.[0];
+    if (!food?.name) return null;
+
+    return {
+      name: food.name,
+      calories: Math.round(Number(food.calories ?? 0)),
+      protein: Math.round(Number(food.protein ?? 0)),
+      carbs: Math.round(Number(food.carbs ?? food.carbohydrate ?? 0)),
+      fat: Math.round(Number(food.fat ?? 0)),
+      sodium: Math.round(Number(food.sodium ?? 0)),
+      grams: 100,
+      servingSize: food.serving_size ?? food.servingSize,
+    };
+  } catch {
+    return null;
+  }
+};
 
 const RECOMMEND_MENU_DB = [
   { name: '🍗 숯불 구이 치킨 도시락', tag: '🔥 고단백 추천', tagColor: 'bg-green-50 text-green-600 border-green-100', calories: 450, carbs: 35, protein: 38, fat: 8, desc: '부족한 단백질을 38g이나 채워줄 수 있는 저지방 고단백 한 끼입니다.' },
@@ -32,14 +167,14 @@ const JOB_OPTIONS = [
   { value: 'athlete', label: '🏃 운동선수/트레이너', desc: '고강도 활동 직업' },
 ];
 
-const MEAL_CFG = {
+const MEAL_CFG: Record<MealType, { label: string; emoji: string; gradient: string; light: string; border: string; accent: string; pill: string; btnBorder: string; btnHover: string }> = {
   breakfast: { label: '아침', emoji: '🌅', gradient: 'from-sky-400 to-blue-500', light: 'bg-sky-50', border: 'border-sky-200', accent: 'text-sky-600', pill: 'bg-sky-100 text-sky-700', btnBorder: 'border-sky-300', btnHover: 'hover:bg-sky-50' },
   lunch:     { label: '점심', emoji: '☀️', gradient: 'from-orange-400 to-amber-500', light: 'bg-orange-50', border: 'border-orange-200', accent: 'text-orange-600', pill: 'bg-orange-100 text-orange-700', btnBorder: 'border-orange-300', btnHover: 'hover:bg-orange-50' },
   dinner:    { label: '저녁', emoji: '🌙', gradient: 'from-violet-500 to-purple-600', light: 'bg-violet-50', border: 'border-violet-200', accent: 'text-violet-600', pill: 'bg-violet-100 text-violet-700', btnBorder: 'border-violet-300', btnHover: 'hover:bg-violet-50' },
   snack:     { label: '간식', emoji: '🍩', gradient: 'from-pink-400 to-rose-500', light: 'bg-pink-50', border: 'border-pink-200', accent: 'text-pink-600', pill: 'bg-pink-100 text-pink-700', btnBorder: 'border-pink-300', btnHover: 'hover:bg-pink-50' },
 };
 
-function calcTotals(items) {
+function calcTotals(items: FoodItem[]) {
   return items.reduce((acc, item) => ({ 
     calories: acc.calories + item.calories, 
     carbs: acc.carbs + item.carbs, 
@@ -56,7 +191,8 @@ export default function Home() {
   const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [userInfo, setUserInfo] = useState({ name: '', gender: 'male', age: '', height: '', weight: '', job: '' });
+  const [profileId, setProfileId] = useState('');
+  const [userInfo, setUserInfo] = useState<UserInfo>({ name: '', gender: 'male', age: '', height: '', weight: '', job: '' });
   const [isSaved, setIsSaved] = useState(false);
   
   // 1. 캘린더 날짜 상태 관리
@@ -66,34 +202,19 @@ export default function Home() {
   const TARGET = { carbs: 250, protein: 120, fat: 65, sodium: 2000 };
   
   // 2. 날짜별 고유 식단 기록 저장을 위한 Map 형태의 상태 개편
-  const [mealsByDate, setMealsByDate] = useState({
-    [new Date().toISOString().split('T')[0]]: {
-      breakfast: { items: [{ name: '닭가슴살', calories: 165, carbs: 0, protein: 31, fat: 3, sodium: 150, grams: 100 }], imgUrl: null },
-      lunch: { items: [{ name: '제육볶음', calories: 480, carbs: 22, protein: 34, fat: 20, sodium: 890, grams: 100 }, { name: '현미밥', calories: 210, carbs: 44, protein: 5, fat: 2, sodium: 10, grams: 100 }], imgUrl: null },
-      dinner: { items: [], imgUrl: null },
-      snack: { items: [], imgUrl: null },
-    }
+  const [mealsByDate, setMealsByDate] = useState<Record<string, Meals>>({
+    [new Date().toISOString().split('T')[0]]: createEmptyMeals()
   });
 
   // 현재 선택된 날짜의 식단 가져오기
-  const currentMeals = mealsByDate[selectedDate] || {
-    breakfast: { items: [], imgUrl: null },
-    lunch: { items: [], imgUrl: null },
-    dinner: { items: [], imgUrl: null },
-    snack: { items: [], imgUrl: null },
-  };
+  const currentMeals = mealsByDate[selectedDate] || createEmptyMeals();
 
   const meals = currentMeals;
 
   // 상태 업데이트 헬퍼 함수
-  const setMeals = (updater) => {
+  const setMeals = (updater: Meals | ((current: Meals) => Meals)) => {
     setMealsByDate(prev => {
-      const current = prev[selectedDate] || {
-        breakfast: { items: [], imgUrl: null },
-        lunch: { items: [], imgUrl: null },
-        dinner: { items: [], imgUrl: null },
-        snack: { items: [], imgUrl: null },
-      };
+      const current = prev[selectedDate] || createEmptyMeals();
       const updated = typeof updater === 'function' ? updater(current) : updater;
       return {
         ...prev,
@@ -102,60 +223,180 @@ export default function Home() {
     });
   };
 
-  const [mealModalType, setMealModalType] = useState(null);
+  const [mealModalType, setMealModalType] = useState<MealType | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchMealType, setSearchMealType] = useState(null);
+  const [searchMealType, setSearchMealType] = useState<MealType | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFoodForDetail, setSelectedFoodForDetail] = useState(null);
+  const [searchResults, setSearchResults] = useState<FoodItem[]>([]);
+  const [isSearchingFood, setIsSearchingFood] = useState(false);
+  const [foodSearchError, setFoodSearchError] = useState('');
+  const [selectedFoodForDetail, setSelectedFoodForDetail] = useState<FoodItem | null>(null);
   const [foodGrams, setFoodGrams] = useState(100);
   const [isPhotoOpen, setIsPhotoOpen] = useState(false);
-  const [photoMealType, setPhotoMealType] = useState(null);
-  const [modalPhotoUrl, setModalPhotoUrl] = useState(null);
-  const [analysisStatus, setAnalysisStatus] = useState('idle');
-  const fileInputRef = useRef(null);
+  const [photoMealType, setPhotoMealType] = useState<MealType | null>(null);
+  const [modalPhotoUrl, setModalPhotoUrl] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
+  const [analyzedFood, setAnalyzedFood] = useState<AnalyzeFoodResult | null>(null);
+  const [analysisError, setAnalysisError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [favorites, setFavorites] = useState([]);
-  const [graphPeriod, setGraphPeriod] = useState('daily');
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [graphPeriod, setGraphPeriod] = useState<GraphPeriod>('daily');
 
   const allItems = [...meals.breakfast.items, ...meals.lunch.items, ...meals.dinner.items, ...meals.snack.items];
   const totalConsumed = calcTotals(allItems);
   const pct = Math.min(100, Math.round((totalConsumed.calories / TARGET_CALORIES) * 100));
 
-  const changeDate = (days) => {
+  const loadMealsForDate = async (nextProfileId = profileId, nextDate = selectedDate) => {
+    if (!nextProfileId) return;
+
+    const response = await fetch(`${API_BASE}/meals/profile/${encodeURIComponent(nextProfileId)}/date/${nextDate}`);
+    if (!response.ok) {
+      throw new Error('식사 기록 조회에 실패했습니다.');
+    }
+
+    const records = await response.json() as ApiMealRecord[];
+    const details = await Promise.all(records.map(async (record) => {
+      const mealId = Number(record.mealID ?? record.MealID);
+      if (!mealId) return null;
+
+      const detailResponse = await fetch(`${API_BASE}/meals/detail/${mealId}`);
+      if (!detailResponse.ok) return null;
+      return await detailResponse.json() as ApiMealDetail;
+    }));
+
+    const nextMeals = createEmptyMeals();
+    details.filter(Boolean).forEach((detail) => {
+      const mealType = apiMealTypeToMealType(detail?.mealType ?? detail?.MealType);
+      if (!detail || !mealType) return;
+
+      nextMeals[mealType] = {
+        ...nextMeals[mealType],
+        mealId: Number(detail.mealID ?? detail.MealID),
+        items: (detail.foods ?? detail.Foods ?? []).map(normalizeMealFood).filter(food => food.name),
+      };
+    });
+
+    setMealsByDate(prev => ({
+      ...prev,
+      [nextDate]: nextMeals,
+    }));
+  };
+
+  useEffect(() => {
+    if (!isLoggedIn || !isInitialSetupDone || !profileId) return;
+
+    loadMealsForDate().catch(() => {
+      setMealsByDate(prev => ({
+        ...prev,
+        [selectedDate]: createEmptyMeals(),
+      }));
+    });
+  }, [isLoggedIn, isInitialSetupDone, profileId, selectedDate]);
+
+  const changeDate = (days: number) => {
     const d = new Date(selectedDate);
     d.setDate(d.getDate() + days);
     setSelectedDate(d.toISOString().split('T')[0]);
   };
 
   const closeLoginModal = () => { setIsLoginModalOpen(false); setLoginId(''); setLoginPw(''); setLoginError(''); };
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (loginId === '123' && loginPw === '123') { setIsLoggedIn(true); closeLoginModal(); }
-    else { setLoginError('아이디 또는 비밀번호가 틀렸습니다.'); }
+    setLoginError('');
+
+    try {
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ProfileID: loginId, ProfilePW: loginPw }),
+      });
+
+      if (!response.ok) {
+        throw new Error('아이디 또는 비밀번호가 틀렸습니다.');
+      }
+
+      const data = await response.json();
+      const nextProfileId = String(data.profileId ?? data.ProfileID ?? loginId);
+      const nextName = String(data.name ?? data.Name ?? '');
+
+      setProfileId(nextProfileId);
+      setUserInfo(prev => ({ ...prev, name: nextName || prev.name }));
+      setIsLoggedIn(true);
+      closeLoginModal();
+    } catch (error) {
+      setLoginError(error instanceof TypeError ? 'API 서버에 연결할 수 없습니다. 서버가 http://localhost:5260 에서 실행 중인지 확인해주세요.' : error instanceof Error ? error.message : '로그인 중 문제가 발생했습니다.');
+    }
   };
-  const handleInitialSetupSubmit = (e) => { 
+  const handleInitialSetupSubmit = async (e: FormEvent<HTMLFormElement>) => { 
     e.preventDefault();
-    if (!userInfo.job) { alert('직업을 선택해주세요.'); return; } setIsInitialSetupDone(true); 
+    if (!userInfo.job) { alert('직업을 선택해주세요.'); return; }
+
+    try {
+      if (profileId) {
+        const response = await fetch(`${API_BASE}/auth/${encodeURIComponent(profileId)}/body`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            height: Number(userInfo.height),
+            weight: Number(userInfo.weight),
+            targetCalories: TARGET_CALORIES,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('신체 정보 저장에 실패했습니다.');
+        }
+      }
+
+      setIsInitialSetupDone(true);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '신체 정보 저장 중 문제가 발생했습니다.');
+    }
   };
-  const handleSaveUser = (e) => { 
-    e.preventDefault(); setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000); 
+  const handleSaveUser = async (e: FormEvent<HTMLFormElement>) => { 
+    e.preventDefault();
+
+    try {
+      if (profileId) {
+        const response = await fetch(`${API_BASE}/auth/${encodeURIComponent(profileId)}/body`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            height: Number(userInfo.height),
+            weight: Number(userInfo.weight),
+            targetCalories: TARGET_CALORIES,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('정보 업데이트에 실패했습니다.');
+        }
+      }
+
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 2000);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '정보 업데이트 중 문제가 발생했습니다.');
+    }
   };
-  const handleLogout = () => { setIsLoggedIn(false); setIsInitialSetupDone(false); setMealModalType(null); };
+  const handleLogout = () => { setIsLoggedIn(false); setIsInitialSetupDone(false); setMealModalType(null); setProfileId(''); };
   
-  const openMealModal = (type) => setMealModalType(type);
+  const openMealModal = (type: MealType) => setMealModalType(type);
   const closeMealModal = () => setMealModalType(null);
 
-  const openSearch = (type) => { setSearchMealType(type); setSearchQuery(''); setIsSearchOpen(true); setSelectedFoodForDetail(null); };
-  const closeSearch = () => { setIsSearchOpen(false); setSearchMealType(null); setSelectedFoodForDetail(null); };
+  const openSearch = (type: MealType) => { setSearchMealType(type); setSearchQuery(''); setSearchResults([]); setFoodSearchError(''); setIsSearchOpen(true); setSelectedFoodForDetail(null); };
+  const closeSearch = () => { setIsSearchOpen(false); setSearchMealType(null); setSelectedFoodForDetail(null); setSearchResults([]); setFoodSearchError(''); };
   
-  const handleSelectFoodItem = (food) => {
+  const handleSelectFoodItem = (food: FoodItem) => {
     setSelectedFoodForDetail(food);
     setFoodGrams(100);
   };
 
-  const confirmAddFood = () => {
+  const confirmAddFood = async () => {
     if (!searchMealType || !selectedFoodForDetail) return;
+    const targetMealType = searchMealType;
     const multiplier = foodGrams / 100;
     const finalFood = {
       name: selectedFoodForDetail.name,
@@ -166,42 +407,219 @@ export default function Home() {
       fat: Math.round(selectedFoodForDetail.fat * multiplier),
       sodium: Math.round((selectedFoodForDetail.sodium || 0) * multiplier),
     };
+
+    let mealId = meals[targetMealType].mealId;
+
+    try {
+      if (profileId) {
+        if (!mealId) {
+          const mealResponse = await fetch(`${API_BASE}/meals/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              profileID: profileId,
+              mealType: mealTypeToApi[targetMealType],
+              mealDate: selectedDate,
+            }),
+          });
+
+          if (!mealResponse.ok) {
+            throw new Error('식사 기록 생성에 실패했습니다.');
+          }
+
+          const mealData = await mealResponse.json();
+          mealId = Number(mealData.mealId ?? mealData.MealID);
+        }
+
+        const addFoodResponse = await fetch(`${API_BASE}/meals/add-food`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mealID: mealId,
+            foodName: finalFood.name,
+            intakeAmount: finalFood.grams,
+            calories: finalFood.calories,
+            protein: finalFood.protein,
+            carbohydrate: finalFood.carbs,
+            fat: finalFood.fat,
+            sodium: finalFood.sodium,
+            sugar: 0,
+          }),
+        });
+
+        if (!addFoodResponse.ok) {
+          throw new Error('음식 추가에 실패했습니다.');
+        }
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '음식 추가 중 문제가 발생했습니다.');
+      return;
+    }
+
     setMeals(prev => ({ 
       ...prev, 
-      [searchMealType]: { 
-        ...prev[searchMealType], 
-        items: [...prev[searchMealType].items, finalFood] 
+      [targetMealType]: { 
+        ...prev[targetMealType],
+        mealId,
+        items: [...prev[targetMealType].items, finalFood] 
       } 
     }));
     closeSearch();
-    setTimeout(() => openMealModal(searchMealType), 80);
+    setTimeout(() => openMealModal(targetMealType), 80);
   };
 
-  const handleRemoveFood = (type, idx) => {
+  const handleRemoveFood = (type: MealType, idx: number) => {
     setMeals(prev => ({ ...prev, [type]: { ...prev[type], items: prev[type].items.filter((_, i) => i !== idx) } }));
   };
 
-  const toggleFavorite = (foodName) => {
+  const toggleFavorite = (foodName: string) => {
     setFavorites(prev => prev.includes(foodName) ? prev.filter(name => name !== foodName) : [...prev, foodName]);
   };
 
-  const openPhoto = (type) => { setPhotoMealType(type); setModalPhotoUrl(null); setAnalysisStatus('idle'); setIsPhotoOpen(true); };
-  const closePhoto = () => { setIsPhotoOpen(false); setPhotoMealType(null); };
-  const handleImageSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (file) { const reader = new FileReader(); reader.onloadend = () => { setModalPhotoUrl(reader.result); setAnalysisStatus('idle'); }; reader.readAsDataURL(file); }
-  };
-  const startAnalysis = () => { if (!modalPhotoUrl) return; setAnalysisStatus('analyzing'); setTimeout(() => setAnalysisStatus('done'), 1500); };
-  const confirmPhoto = () => {
-    if (!photoMealType || !modalPhotoUrl || analysisStatus !== 'done') return;
-    const analyzed = { name: '후라이드 치킨 반마리', grams: 250, calories: 650, carbs: 25, protein: 45, fat: 35, sodium: 850 };
-    setMeals(prev => ({ ...prev, [photoMealType]: { imgUrl: modalPhotoUrl, items: [...prev[photoMealType].items, analyzed] } }));
-    closePhoto();
-    setTimeout(() => openMealModal(photoMealType), 80);
-  };
-  const removeImage = (type) => setMeals(prev => ({ ...prev, [type]: { ...prev[type], imgUrl: null } }));
+  useEffect(() => {
+    if (!isSearchOpen) return;
 
-  const getGraphData = (period) => {
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchResults([]);
+      setFoodSearchError('');
+      setIsSearchingFood(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setIsSearchingFood(true);
+      setFoodSearchError('');
+
+      try {
+        const response = await fetch(`${API_BASE}/meals/search-food`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ foodName: query }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error('음식 검색에 실패했습니다.');
+        }
+
+        const data = await response.json();
+        const foods = Array.isArray(data) ? data.map(normalizeFoodSearchResult).filter(food => food.name) : [];
+        setSearchResults(foods);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setSearchResults([]);
+        setFoodSearchError('음식 검색 중 문제가 발생했습니다. API 서버 상태를 확인해주세요.');
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearchingFood(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [isSearchOpen, searchQuery]);
+
+  const openPhoto = (type: MealType) => { setPhotoMealType(type); setModalPhotoUrl(null); setPhotoFile(null); setAnalyzedFood(null); setAnalysisError(''); setAnalysisStatus('idle'); setIsPhotoOpen(true); };
+  const closePhoto = () => { setIsPhotoOpen(false); setPhotoMealType(null); };
+  const handleImageSelect = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) { setPhotoFile(file); setAnalyzedFood(null); setAnalysisError(''); const reader = new FileReader(); reader.onloadend = () => { if (typeof reader.result === 'string') setModalPhotoUrl(reader.result); setAnalysisStatus('idle'); }; reader.readAsDataURL(file); }
+  };
+  const startAnalysis = async () => {
+    if (!photoFile) return;
+
+    setAnalysisStatus('analyzing');
+    setAnalysisError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('image', photoFile);
+
+      const response = await fetch(`${API_BASE}/meals/analyze`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('사진 분석에 실패했습니다.');
+      }
+
+      const data = await response.json();
+      const food = parseAnalyzeResult(String(data.result ?? data.Result ?? ''));
+      if (!food) {
+        throw new Error('분석 결과를 읽을 수 없습니다.');
+      }
+
+      setAnalyzedFood(food);
+      setAnalysisStatus('done');
+    } catch (error) {
+      setAnalyzedFood(null);
+      setAnalysisError(error instanceof Error ? error.message : '사진 분석 중 문제가 발생했습니다.');
+      setAnalysisStatus('error');
+    }
+  };
+  const confirmPhoto = async () => {
+    if (!photoMealType || !modalPhotoUrl || analysisStatus !== 'done' || !analyzedFood) return;
+
+    const targetMealType = photoMealType;
+    let mealId = meals[targetMealType].mealId;
+
+    try {
+      if (profileId) {
+        if (!mealId) {
+          const mealResponse = await fetch(`${API_BASE}/meals/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              profileID: profileId,
+              mealType: mealTypeToApi[targetMealType],
+              mealDate: selectedDate,
+            }),
+          });
+
+          if (!mealResponse.ok) {
+            throw new Error('식사 기록 생성에 실패했습니다.');
+          }
+
+          const mealData = await mealResponse.json();
+          mealId = Number(mealData.mealId ?? mealData.MealID);
+        }
+
+        const addFoodResponse = await fetch(`${API_BASE}/meals/add-food`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mealID: mealId,
+            foodName: analyzedFood.name,
+            intakeAmount: analyzedFood.grams ?? 100,
+            calories: analyzedFood.calories,
+            protein: analyzedFood.protein,
+            carbohydrate: analyzedFood.carbs,
+            fat: analyzedFood.fat,
+            sodium: analyzedFood.sodium ?? 0,
+            sugar: 0,
+          }),
+        });
+
+        if (!addFoodResponse.ok) {
+          throw new Error('분석 음식 등록에 실패했습니다.');
+        }
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '분석 음식 등록 중 문제가 발생했습니다.');
+      return;
+    }
+
+    setMeals(prev => ({ ...prev, [targetMealType]: { ...prev[targetMealType], mealId, imgUrl: modalPhotoUrl, items: [...prev[targetMealType].items, analyzedFood] } }));
+    closePhoto();
+    setTimeout(() => openMealModal(targetMealType), 80);
+  };
+  const getGraphData = (period: GraphPeriod) => {
     const currentCal = totalConsumed.calories;
     switch(period) {
       case 'daily':
@@ -287,7 +705,7 @@ export default function Home() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              {[{ key: 'age', label: '나이 (세)', ph: '예: 24' }, { key: 'height', label: '신장 (cm)', ph: '예: 175' }].map(({ key, label, ph }) => (
+              {([{ key: 'age', label: '나이 (세)', ph: '예: 24' }, { key: 'height', label: '신장 (cm)', ph: '예: 175' }] as Array<{ key: keyof UserInfo; label: string; ph: string }>).map(({ key, label, ph }) => (
                 <div key={key}><label className="block text-xs font-extrabold text-black mb-1.5 pl-1">{label}</label><input type="number" value={userInfo[key]} onChange={(e) => setUserInfo({ ...userInfo, [key]: e.target.value })} placeholder={ph} className="w-full text-black bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:bg-white focus:border-orange-500 transition-all" required /></div>
               ))}
             </div>
@@ -347,7 +765,7 @@ export default function Home() {
 
               {/* 끼니 카드 영역 */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                {(['breakfast', 'lunch', 'dinner', 'snack']).map((type) => {
+                {(['breakfast', 'lunch', 'dinner', 'snack'] as MealType[]).map((type) => {
                   const cfg = MEAL_CFG[type];
                   const mealItems = meals[type].items;
                   const mealTotals = calcTotals(mealItems);
@@ -469,7 +887,7 @@ export default function Home() {
                       <div className="flex items-center gap-1"><span className="w-3 h-0.5 border-t-2 border-dashed border-rose-500 block" /> <span className="text-slate-500">권장선</span></div>
                     </div>
                     <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
-                      {['daily', 'weekly', 'monthly', 'yearly'].map(period => (
+                      {(['daily', 'weekly', 'monthly', 'yearly'] as GraphPeriod[]).map(period => (
                         <button key={period} onClick={() => setGraphPeriod(period)} className={`text-[10px] font-black px-2 py-1 rounded-md transition-all ${graphPeriod === period ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}>
                           {period === 'daily' ? '일간' : period === 'weekly' ? '주간' : period === 'monthly' ? '월간' : '년간'}
                         </button>
@@ -536,7 +954,7 @@ export default function Home() {
                   <div className="flex-[1.2]"><label className="block text-[10px] font-bold text-slate-400 mb-1 pl-0.5">성별</label><div className="flex w-full bg-slate-50 border border-slate-200 rounded-lg overflow-hidden h-[30px]">{['male', 'female'].map(g => (<button key={g} type="button" onClick={() => setUserInfo({ ...userInfo, gender: g })} className={`flex-1 text-[10px] font-bold transition-all ${userInfo.gender === g ? 'bg-orange-500 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>{g === 'male' ? '남성' : '여성'}</button>))}</div></div>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  {[{ key: 'age', label: '나이(세)' }, { key: 'height', label: '신장(cm)' }, { key: 'weight', label: '체중(kg)' }].map(({ key, label }) => (
+                  {([{ key: 'age', label: '나이(세)' }, { key: 'height', label: '신장(cm)' }, { key: 'weight', label: '체중(kg)' }] as Array<{ key: keyof UserInfo; label: string }>).map(({ key, label }) => (
                     <div key={key}><label className="block text-[10px] font-bold text-slate-400 mb-1 pl-0.5">{label}</label><input type="number" value={userInfo[key]} onChange={(e) => setUserInfo(prev => ({ ...prev, [key]: e.target.value }))} className="w-full text-black bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:bg-white focus:border-orange-400 text-center" required /></div>
                   ))}
                 </div>
@@ -667,8 +1085,8 @@ export default function Home() {
 
       {/* ════ 메뉴 검색 및 즐겨찾기 모달 ════ */}
       {isSearchOpen && (() => {
-        const filteredFoods = DUMMY_FOOD_DB.filter(food => food.name.includes(searchQuery));
-        const sortedFoods = [...filteredFoods].sort((a, b) => {
+        const searchCfg = searchMealType ? MEAL_CFG[searchMealType] : null;
+        const sortedFoods = [...searchResults].sort((a, b) => {
           const aFav = favorites.includes(a.name);
           const bFav = favorites.includes(b.name);
           if (aFav && !bFav) return -1;
@@ -680,7 +1098,7 @@ export default function Home() {
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4" onClick={(e) => { if (e.target === e.currentTarget) closeSearch(); }}>
             <div className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
               <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                <h3 className="font-bold text-slate-800">{MEAL_CFG[searchMealType]?.emoji} {MEAL_CFG[searchMealType]?.label} 메뉴 검색</h3>
+                <h3 className="font-bold text-slate-800">{searchCfg?.emoji} {searchCfg?.label} 메뉴 검색</h3>
                 <button onClick={closeSearch} className="text-slate-400 hover:text-red-500"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
               </div>
               <div className="p-6">
@@ -690,7 +1108,11 @@ export default function Home() {
                 </div>
                 
                 <div className="h-64 overflow-y-auto space-y-1.5 pr-1">
-                  {sortedFoods.length > 0 ? (
+                  {isSearchingFood ? (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10"><p className="text-sm">검색 중입니다...</p></div>
+                  ) : foodSearchError ? (
+                    <div className="h-full flex flex-col items-center justify-center text-red-400 py-10 text-center px-4"><p className="text-sm">{foodSearchError}</p></div>
+                  ) : sortedFoods.length > 0 ? (
                     sortedFoods.map((food) => (
                       <div key={food.name} onClick={() => handleSelectFoodItem(food)}
                         className="w-full text-left flex items-center px-4 py-3 rounded-xl border border-slate-100 hover:border-orange-200 hover:bg-orange-50/50 group transition-all cursor-pointer">
@@ -701,8 +1123,10 @@ export default function Home() {
                         <span className="text-xs sm:text-sm font-black text-orange-500 flex-shrink-0">{food.calories} kcal</span>
                       </div>
                     ))
-                  ) : (
+                  ) : searchQuery.trim() ? (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10"><p className="text-sm">검색 결과가 없습니다.</p></div>
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10"><p className="text-sm">음식명을 입력해 검색하세요.</p></div>
                   )}
                 </div>
               </div>
@@ -782,11 +1206,12 @@ export default function Home() {
               <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 mb-6 shadow-inner min-h-[110px] flex items-center justify-center">
                 {analysisStatus === 'idle' && <div className="text-center text-slate-400"><p className="text-xs font-medium">사진을 등록한 후 분석 시작 버튼을 누르세요.</p></div>}
                 {analysisStatus === 'analyzing' && <div className="text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-3" /><p className="text-xs font-bold text-orange-600">AI 푸드 렌즈 가동 중...</p></div>}
-                {analysisStatus === 'done' && (
+                {analysisStatus === 'error' && <div className="text-center text-red-400"><p className="text-xs font-bold">{analysisError}</p></div>}
+                {analysisStatus === 'done' && analyzedFood && (
                   <div className="w-full">
-                    <div className="flex items-center gap-2.5 mb-3 border-b border-slate-100 pb-2.5"><h4 className="text-sm font-black text-slate-800">분석 완료: 후라이드 치킨 반마리</h4></div>
+                    <div className="flex items-center gap-2.5 mb-3 border-b border-slate-100 pb-2.5"><h4 className="text-sm font-black text-slate-800">분석 완료: {analyzedFood.name}</h4></div>
                     <div className="grid grid-cols-5 gap-2 text-center">
-                      {[{ label: '탄수화물', val: '25g', color: 'text-blue-600' }, { label: '단백질', val: '45g', color: 'text-green-600' }, { label: '지방', val: '35g', color: 'text-amber-600' }, { label: '칼로리', val: '650', color: 'text-orange-500 font-bold' }, { label: '나트륨', val: '850mg', color: 'text-red-500' }].map(({ label, val, color }) => (
+                      {[{ label: '탄수화물', val: `${analyzedFood.carbs}g`, color: 'text-blue-600' }, { label: '단백질', val: `${analyzedFood.protein}g`, color: 'text-green-600' }, { label: '지방', val: `${analyzedFood.fat}g`, color: 'text-amber-600' }, { label: '칼로리', val: `${analyzedFood.calories}`, color: 'text-orange-500 font-bold' }, { label: '나트륨', val: `${analyzedFood.sodium || 0}mg`, color: 'text-red-500' }].map(({ label, val, color }) => (
                         <div key={label} className="bg-white p-1.5 rounded-lg border border-slate-100"><span className="block text-[9px] font-bold text-slate-400">{label}</span><span className={`text-[10px] font-black mt-0.5 block ${color}`}>{val}</span></div>
                       ))}
                     </div>
@@ -795,9 +1220,9 @@ export default function Home() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 {analysisStatus !== 'done' ? (
-                  <button onClick={startAnalysis} disabled={!modalPhotoUrl || analysisStatus === 'analyzing'} className="col-span-2 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-red-500 text-white font-extrabold py-4 rounded-xl shadow-md text-sm hover:opacity-95 transition-all disabled:opacity-50">분석 시작</button>
+                  <button onClick={startAnalysis} disabled={!photoFile || analysisStatus === 'analyzing'} className="col-span-2 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-red-500 text-white font-extrabold py-4 rounded-xl shadow-md text-sm hover:opacity-95 transition-all disabled:opacity-50">분석 시작</button>
                 ) : (
-                  <><button onClick={() => setAnalysisStatus('idle')} className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-xl text-sm hover:bg-slate-200 transition-colors">다시 분석하기</button><button onClick={confirmPhoto} className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white font-extrabold py-4 rounded-xl shadow-md text-sm hover:opacity-95 transition-all">식단 등록</button></>
+                  <><button onClick={() => { setAnalyzedFood(null); setAnalysisError(''); setAnalysisStatus('idle'); }} className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-xl text-sm hover:bg-slate-200 transition-colors">다시 분석하기</button><button onClick={confirmPhoto} className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white font-extrabold py-4 rounded-xl shadow-md text-sm hover:opacity-95 transition-all">식단 등록</button></>
                 )}
               </div>
             </div>
