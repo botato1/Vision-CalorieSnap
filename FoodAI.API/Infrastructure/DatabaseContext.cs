@@ -1,7 +1,7 @@
 ﻿using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
-namespace FoodAI.API.Database
+namespace FoodAI.API.Infrastructure
 {
     public class DatabaseContext
     {
