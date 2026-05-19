@@ -30,7 +30,3 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 .DS_Store
-
-# 개인 환경 설정 파일 (연결 문자열 등 민감 정보 포함)
-appsettings.Local.json
-appsettings.Development.json
