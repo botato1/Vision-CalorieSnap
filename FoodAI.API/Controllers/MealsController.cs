@@ -8,23 +8,44 @@ namespace FoodAI.API.Controllers;
 [Route("api/meals")]
 public class MealsController : ControllerBase
 {
+    // ─────────────────────────────────────────────
+    // Services
+    // ─────────────────────────────────────────────
+
     private readonly IOpenAiService
         _geminiService;
 
     private readonly IMealService
         _mealService;
 
+    private readonly IFoodNutritionService
+        _foodNutritionService;
+
+    // ─────────────────────────────────────────────
+    // Constructor
+    // ─────────────────────────────────────────────
+
     public MealsController(
         IOpenAiService geminiService,
-        IMealService mealService
+        IMealService mealService,
+        IFoodNutritionService foodNutritionService
     )
     {
-        _geminiService = geminiService;
+        _geminiService =
+            geminiService;
 
-        _mealService = mealService;
+        _mealService =
+            mealService;
+
+        _foodNutritionService =
+            foodNutritionService;
     }
 
+    // ─────────────────────────────────────────────
     // 테스트
+    // GET /api/meals
+    // ─────────────────────────────────────────────
+
     [HttpGet]
     public IActionResult Test()
     {
@@ -34,10 +55,16 @@ public class MealsController : ControllerBase
         });
     }
 
+    // ─────────────────────────────────────────────
     // 음식 이미지 분석
+    // POST /api/meals/analyze
+    // ─────────────────────────────────────────────
+
     [HttpPost("analyze")]
     public async Task<IActionResult>
-        AnalyzeFood(IFormFile image)
+        AnalyzeFood(
+            IFormFile image
+        )
     {
         if (image == null ||
             image.Length == 0)
@@ -72,7 +99,9 @@ public class MealsController : ControllerBase
 
     // ─────────────────────────────────────────────
     // 식사 생성
+    // POST /api/meals/create
     // ─────────────────────────────────────────────
+
     [HttpPost("create")]
     public async Task<IActionResult>
         CreateMeal(
@@ -92,8 +121,10 @@ public class MealsController : ControllerBase
     }
 
     // ─────────────────────────────────────────────
-    // 음식 추가
+    // 음식 직접 추가
+    // POST /api/meals/add-food
     // ─────────────────────────────────────────────
+
     [HttpPost("add-food")]
     public async Task<IActionResult>
         AddFood(
@@ -111,8 +142,31 @@ public class MealsController : ControllerBase
     }
 
     // ─────────────────────────────────────────────
-    // 전체 식사 조회
+    // 음식 검색 후 자동 추가
+    // POST /api/meals/search-food
     // ─────────────────────────────────────────────
+
+    [HttpPost("search-food")]
+    public async Task<IActionResult>
+        SearchFood(
+            [FromBody]
+        SearchFoodRequest request
+        )
+    {
+        var foods =
+            await _foodNutritionService
+                .SearchFoodAsync(
+                    request.FoodName
+                );
+
+        return Ok(foods);
+    }
+
+    // ─────────────────────────────────────────────
+    // 전체 식사 조회
+    // GET /api/meals/profile/admin
+    // ─────────────────────────────────────────────
+
     [HttpGet("profile/{profileId}")]
     public async Task<IActionResult>
         GetMeals(
@@ -121,14 +175,18 @@ public class MealsController : ControllerBase
     {
         var meals =
             await _mealService
-                .GetMealsAsync(profileId);
+                .GetMealsAsync(
+                    profileId
+                );
 
         return Ok(meals);
     }
 
     // ─────────────────────────────────────────────
     // 날짜별 조회
+    // GET /api/meals/profile/admin/date/2026-05-19
     // ─────────────────────────────────────────────
+
     [HttpGet("profile/{profileId}/date/{date}")]
     public async Task<IActionResult>
         GetMealsByDate(
@@ -148,7 +206,9 @@ public class MealsController : ControllerBase
 
     // ─────────────────────────────────────────────
     // 상세 조회
+    // GET /api/meals/detail/1
     // ─────────────────────────────────────────────
+
     [HttpGet("detail/{mealId}")]
     public async Task<IActionResult>
         GetMealDetail(
@@ -157,7 +217,9 @@ public class MealsController : ControllerBase
     {
         var meal =
             await _mealService
-                .GetMealDetailAsync(mealId);
+                .GetMealDetailAsync(
+                    mealId
+                );
 
         if (meal == null)
         {
@@ -173,7 +235,9 @@ public class MealsController : ControllerBase
 
     // ─────────────────────────────────────────────
     // 삭제
+    // DELETE /api/meals/1
     // ─────────────────────────────────────────────
+
     [HttpDelete("{mealId}")]
     public async Task<IActionResult>
         DeleteMeal(
@@ -181,7 +245,9 @@ public class MealsController : ControllerBase
         )
     {
         await _mealService
-            .DeleteMealAsync(mealId);
+            .DeleteMealAsync(
+                mealId
+            );
 
         return Ok(new
         {
