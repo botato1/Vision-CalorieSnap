@@ -126,5 +126,49 @@ JSON만 답해줘, 다른 말 하지 말고. 코드블록도 쓰지 말고." }
 
             return candidates[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString()!;
         }
+
+        // 음식 이름으로 AI 영양 정보 추정
+        public async Task<string> GetFoodNutritionByNameAsync(string foodName)
+        {
+            var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
+
+            var prompt = $@"음식 ""{foodName}""의 영양 정보를 알려줘.
+반드시 아래 JSON 배열 형식으로만 답해. 설명이나 코드블록(```) 없이 JSON만 출력해.
+[
+  {{
+    ""FoodName"": ""음식 이름(브랜드 포함 가능)"",
+    ""Calories"": 칼로리숫자,
+    ""Carbohydrate"": 탄수화물숫자,
+    ""Protein"": 단백질숫자,
+    ""Fat"": 지방숫자,
+    ""Sodium"": 나트륨숫자,
+    ""MakerName"": ""브랜드명 또는 AI추정""
+  }}
+]
+100g 기준 또는 1인분 기준으로 실제 데이터에 최대한 가깝게 숫자만 넣어줘.";
+
+            var requestBody = new
+            {
+                contents = new[] { new { parts = new object[] { new { text = prompt } } } }
+            };
+
+            var json = JsonSerializer.Serialize(requestBody);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(url, content);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            var doc = JsonDocument.Parse(responseBody);
+
+            if (doc.RootElement.TryGetProperty("error", out var errorElement))
+            {
+                var errorMsg = errorElement.TryGetProperty("message", out var msg) ? msg.GetString() : "알 수 없는 오류";
+                throw new Exception($"Gemini API 오류: {errorMsg}");
+            }
+
+            if (!doc.RootElement.TryGetProperty("candidates", out var candidates))
+                throw new Exception("Gemini 응답에 candidates가 없습니다.");
+
+            return candidates[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString()!;
+        }
     }
 }

@@ -387,7 +387,7 @@ export default function Home() {
   const openSearch = (type) => { setSearchMealType(type); setSearchQuery(''); setSearchResults([]); setIsSearchOpen(true); setSelectedFoodForDetail(null); };
   const closeSearch = () => { setIsSearchOpen(false); setSearchMealType(null); setSelectedFoodForDetail(null); setSearchResults([]); };
 
-  // 음식 이름으로 공공 API를 호출해 검색 결과를 가져오는 함수
+  // 음식 이름으로 검색: 공공 API + AI 병렬 호출, AI 결과 항상 최상단 표시
   const handleSearchFood = async (query: string) => {
     if (!query.trim()) { setSearchResults([]); return; }
     const trimmed = query.trim();
@@ -397,17 +397,39 @@ export default function Home() {
     }
     setIsSearchLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/meals/search-food`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ FoodName: trimmed }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const foods = Array.isArray(data) ? data.map(normalizeFoodSearch).filter((food) => food.name) : [];
-        searchCacheRef.current[trimmed] = foods;
-        setSearchResults(foods);
+      // 공공 API + AI 동시 병렬 호출
+      const [apiResult, aiResult] = await Promise.allSettled([
+        fetch(`${API_BASE}/meals/search-food`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ FoodName: trimmed }),
+        }),
+        fetch(`${API_BASE}/meals/ai-search-food`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ FoodName: trimmed }),
+        }),
+      ]);
+
+      let apiFoods: any[] = [];
+      let aiFoods: any[] = [];
+
+      if (apiResult.status === 'fulfilled' && apiResult.value.ok) {
+        const data = await apiResult.value.json();
+        apiFoods = Array.isArray(data) ? data.map(normalizeFoodSearch).filter((f) => f.name) : [];
       }
+      if (aiResult.status === 'fulfilled' && aiResult.value.ok) {
+        const data = await aiResult.value.json();
+        aiFoods = Array.isArray(data) ? data.map((f) => ({ ...normalizeFoodSearch(f), isAi: true })).filter((f) => f.name) : [];
+      }
+
+      // AI 결과 최상단 배치 + 공공 API 결과에서 AI와 중복 이름 제거
+      const aiNames = new Set(aiFoods.map((f) => (f.rawName || f.name).toLowerCase()));
+      const uniqueApi = apiFoods.filter((f) => !aiNames.has((f.rawName || f.name).toLowerCase()));
+      const merged = [...aiFoods, ...uniqueApi];
+
+      searchCacheRef.current[trimmed] = merged;
+      setSearchResults(merged);
     } finally {
       setIsSearchLoading(false);
     }
@@ -734,8 +756,9 @@ export default function Home() {
 
   const graphData = getGraphData(graphPeriod);
   const safeIntake = graphData.intake.map(v => (isNaN(v) || !isFinite(v)) ? 0 : v);
-  // Y축 상한선 3500 고정 — 기간 전환 시 스케일 완전 일치
-  const maxCal = 3500;
+  // 일간: 끼니당 칼로리 기준 → 1500 고정 (권장선 TARGET/4가 약 33~42% 위치로 가독성 확보)
+  // 주간/월간/년간: 하루 전체 칼로리 기준 → 3500 고정
+  const maxCal = graphPeriod === 'daily' ? 1500 : 3500;
   // 권장선 기준값: 일간=끼니당(TARGET/4), 나머지=하루 전체 TARGET
   const periodTargetUnit = graphPeriod === 'daily' ? TARGET_CALORIES / 4 : TARGET_CALORIES;
   const graphWidth = 420;
@@ -1049,8 +1072,8 @@ export default function Home() {
                         </linearGradient>
                       </defs>
 
-                      {/* Y축 그리드 — 3500 기준 4칸 고정 눈금 (0/875/1750/2625/3500) */}
-                      {[0, 875, 1750, 2625, 3500].map((val) => {
+                      {/* Y축 그리드 — 3칸 고정 눈금 (maxCal 기준 3등분) */}
+                      {Array.from({ length: 4 }, (_, i) => Math.round(maxCal * i / 3)).map((val) => {
                         const y = endY - (val / maxCal) * graphHeight;
                         const isTarget = val === Math.round(periodTargetUnit);
                         return (
@@ -1368,9 +1391,16 @@ export default function Home() {
                       <div key={idx} className="flex items-center px-4 py-3 rounded-xl border border-slate-100 hover:border-orange-200 hover:bg-orange-50/50 transition-all">
                         {/* 음식 정보 클릭 → 용량 선택 */}
                         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleSelectFoodItem(foodObj)}>
-                          {food.makerName && <span className="text-[10px] font-bold text-slate-400">{food.makerName} · </span>}
-                          <span className="text-sm font-bold text-slate-700">{food.rawName || food.name}</span>
-                          <span className="text-sm font-black text-orange-500 ml-2">{Math.round(food.calories)} kcal</span>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {food.isAi && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-violet-100 text-violet-600 text-[9px] font-black tracking-wide">
+                                ✦ AI추정
+                              </span>
+                            )}
+                            {food.makerName && !food.isAi && <span className="text-[10px] font-bold text-slate-400">{food.makerName} · </span>}
+                            <span className="text-sm font-bold text-slate-700">{food.rawName || food.name}</span>
+                            <span className="text-sm font-black text-orange-500">{Math.round(food.calories)} kcal</span>
+                          </div>
                         </div>
                         {/* 즐겨찾기 토글 버튼 */}
                         <button onClick={() => toggleFavorite(foodObj)} className={`ml-2 flex-shrink-0 transition-all ${isFavorite(foodObj.name) ? 'text-amber-400' : 'text-slate-300 hover:text-amber-300'}`} title={isFavorite(foodObj.name) ? '즐겨찾기 해제' : '즐겨찾기 추가'}>

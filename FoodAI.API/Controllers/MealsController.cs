@@ -1,4 +1,6 @@
+using System.Text.Json;
 using FoodAI.API.DTOs.Requests;
+using FoodAI.API.DTOs.Responses;
 using FoodAI.API.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -150,6 +152,39 @@ public class MealsController : ControllerBase
                 );
 
         return Ok(foods);
+    }
+
+    // ─────────────────────────────────────────────
+    // AI 음식 영양 검색 (공공 API 결과 없을 때 fallback)
+    // POST /api/meals/ai-search-food
+    // ─────────────────────────────────────────────
+
+    [HttpPost("ai-search-food")]
+    public async Task<IActionResult> AiSearchFood([FromBody] SearchFoodRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.FoodName))
+            return BadRequest(new { message = "음식 이름을 입력해주세요." });
+
+        try
+        {
+            var rawJson = await _geminiService.GetFoodNutritionByNameAsync(request.FoodName);
+
+            // Gemini가 코드블록(```)을 붙여서 반환하는 경우 제거
+            var cleaned = rawJson
+                .Replace("```json", "")
+                .Replace("```", "")
+                .Trim();
+
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var foods = JsonSerializer.Deserialize<List<FoodSearchResponse>>(cleaned, options)
+                        ?? new List<FoodSearchResponse>();
+
+            return Ok(foods);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(503, new { message = $"AI 영양 검색 오류: {ex.Message}" });
+        }
     }
 
     // ─────────────────────────────────────────────
