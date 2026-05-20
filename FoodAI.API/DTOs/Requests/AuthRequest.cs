@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using FoodAI.API.Models;
+using System.ComponentModel.DataAnnotations;
 
 namespace FoodAI.API.DTOs.Requests
 {
@@ -29,56 +30,39 @@ namespace FoodAI.API.DTOs.Requests
         public double Weight { get; set; }
 
         /// <summary>생년월일 (선택)</summary>
-        public DateTime? BirthDate { get; set; }
+        public int Age { get; set; }
 
         /// <summary>목표 칼로리 (kcal/일)</summary>
         [Range(500, 5000, ErrorMessage = "목표 칼로리는 500~5000kcal 사이여야 합니다")]
         public double TargetCalories { get; set; } = 2000;
+
+        public JobType Job { get; set; } = JobType.Office;
     }
     public class LoginUserRequest
     {
         public string ProfileID { get; set; } = string.Empty;
         public string ProfilePW { get; set; } = string.Empty;
     }
-    // GEMINI VISION - 이미지 분석 요청
-    public class AnalyzeFoodRequest
-    {
-        public string ImageBase64 { get; set; } = string.Empty;
-    }
 
-    // GEMINI - 부족한 영양소 기반 메뉴 추천 요청
-    public class RecommendRequest
+    // 로그인 요청 데이터
+    public class LoginRequest
     {
-        public double RemainingCalories { get; set; }
-        public double RemainingProtein { get; set; }
-        public double RemainingCarbs { get; set; }
-        public double RemainingFat { get; set; }
+        public string ProfileID { get; set; } = string.Empty;
+        public string ProfilePW { get; set; } = string.Empty;
     }
-
-    // 식사 생성 요청
-    public class CreateMealRecordRequest
+    public class UpdateUserProfileRequest
     {
-        public string ProfileId { get; set; } = string.Empty;
-        public string MealType { get; set; } = string.Empty;
-        public DateTime MealDate { get; set; }
-    }
 
-    // 음식 직접 추가 요청
-    public class AddMealFoodRequest
-    {
-        public int MealId { get; set; }
-        public string FoodName { get; set; } = string.Empty;
-        public double Calories { get; set; }
-        public double Carbohydrate { get; set; }
-        public double Protein { get; set; }
-        public double Fat { get; set; }
-        public double Sodium { get; set; }
-        public double Grams { get; set; }
-    }
+        [Range(50, 250)]
+        public double Height { get; set; }
 
-    // 음식 검색 요청
-    public class SearchFoodRequest
-    {
-        public string FoodName { get; set; } = string.Empty;
+        [Range(10, 300)]
+        public double Weight { get; set; }
+
+        [Range(500, 5000)]
+        public double TargetCalories { get; set; }
+
+        public JobType Job { get; set; } = JobType.Office;
     }
 }
+    
