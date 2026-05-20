@@ -1,28 +1,98 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
+import type { ChangeEvent, FormEvent, MouseEvent } from 'react';
 
-// DB의 영양성분은 '100g'을 기준으로 한다고 가정합니다.
-const DUMMY_FOOD_DB = [
-  { name: '마라탕', calories: 620, carbs: 68, protein: 28, fat: 22, sodium: 2500 },
-  { name: '후라이드 치킨', calories: 650, carbs: 25, protein: 45, fat: 35, sodium: 850 },
-  { name: '연어 샐러드', calories: 320, carbs: 18, protein: 32, fat: 14, sodium: 320 },
-  { name: '페퍼로니 피자', calories: 540, carbs: 58, protein: 22, fat: 24, sodium: 980 },
-  { name: '김치찌개', calories: 280, carbs: 12, protein: 18, fat: 12, sodium: 1200 },
-  { name: '제육볶음', calories: 480, carbs: 22, protein: 34, fat: 20, sodium: 890 },
-  { name: '아메리카노', calories: 10, carbs: 1, protein: 0, fat: 0, sodium: 5 },
-  { name: '떡볶이', calories: 380, carbs: 72, protein: 8, fat: 6, sodium: 1100 },
-  { name: '현미밥', calories: 210, carbs: 44, protein: 5, fat: 2, sodium: 10 },
-  { name: '닭가슴살', calories: 165, carbs: 0, protein: 31, fat: 3, sodium: 150 },
-  { name: '프로틴 바', calories: 190, carbs: 20, protein: 21, fat: 6, sodium: 110 },
-  { name: '그릭 요거트', calories: 110, carbs: 6, protein: 10, fat: 4, sodium: 40 },
-];
+type MealKey = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+type Gender = 'male' | 'female';
+type AnalysisStatus = 'idle' | 'analyzing' | 'done';
+type GraphPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
-const RECOMMEND_MENU_DB = [
-  { name: '🍗 숯불 구이 치킨 도시락', tag: '🔥 고단백 추천', tagColor: 'bg-green-50 text-green-600 border-green-100', calories: 450, carbs: 35, protein: 38, fat: 8, desc: '부족한 단백질을 38g이나 채워줄 수 있는 저지방 고단백 한 끼입니다.' },
-  { name: '🥑 연어 아보카도 샐러드 랩', tag: '⚖️ 영양 균형식', tagColor: 'bg-blue-50 text-blue-600 border-blue-100', calories: 380, carbs: 42, protein: 22, fat: 12, desc: '탄수화물과 지방의 밸런스가 뛰어나며 오메가3가 풍부합니다.' },
-];
+type NutritionTotals = {
+  calories: number;
+  carbs: number;
+  protein: number;
+  fat: number;
+  sodium: number;
+};
+
+type FoodItem = NutritionTotals & {
+  name: string;
+  grams?: number;
+  desc?: string;
+};
+
+type SearchFoodResponse = {
+  foodName: string;
+  makerName?: string;
+  calories: number;
+  carbohydrate: number;
+  protein: number;
+  fat: number;
+  sodium?: number;
+};
+
+type MealSlot = {
+  items: FoodItem[];
+  imgUrl: string | null;
+};
+
+type MealsState = Record<MealKey, MealSlot>;
+type MealsByDate = Record<string, MealsState>;
+
+type UserInfo = {
+  name: string;
+  gender: Gender;
+  age: string;
+  height: string;
+  weight: string;
+  job: number | '';
+};
+
+type ApiMealRecord = {
+  mealType: MealKey | number | string;
+  foods?: Array<{
+    name?: string;
+    foodName?: string;
+    grams?: number;
+    intakeAmount?: number;
+    calories?: number;
+    carbs?: number;
+    carbohydrate?: number;
+    protein?: number;
+    fat?: number;
+    sodium?: number;
+  }>;
+};
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5260';
+const MEAL_KEYS: MealKey[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+const createEmptyMeals = (): MealsState => ({
+  breakfast: { items: [], imgUrl: null },
+  lunch: { items: [], imgUrl: null },
+  dinner: { items: [], imgUrl: null },
+  snack: { items: [], imgUrl: null },
+});
+
+const mealTypeFromApi = (value: ApiMealRecord['mealType']): MealKey | null => {
+  if (value === 0 || value === '0' || value === 'breakfast' || value === 'Breakfast') return 'breakfast';
+  if (value === 1 || value === '1' || value === 'lunch' || value === 'Lunch') return 'lunch';
+  if (value === 2 || value === '2' || value === 'dinner' || value === 'Dinner') return 'dinner';
+  if (value === 3 || value === '3' || value === 'snack' || value === 'Snack') return 'snack';
+  return null;
+};
+
+const parseAiJson = (raw: unknown) => {
+  if (typeof raw !== 'string') return raw;
+  const cleaned = raw.replace(/```json|```/gi, '').trim();
+  const start = Math.min(
+    ...[cleaned.indexOf('['), cleaned.indexOf('{')].filter((idx) => idx >= 0),
+  );
+  const end = Math.max(cleaned.lastIndexOf(']'), cleaned.lastIndexOf('}'));
+  const jsonText = start >= 0 && end >= start ? cleaned.slice(start, end + 1) : cleaned;
+  return JSON.parse(jsonText);
+};
 
 // 활동 배수(multiplier)는 미플린-세인트 지어 공식의 PAL 계수 기준
 const JOB_OPTIONS = [
@@ -34,14 +104,24 @@ const JOB_OPTIONS = [
   { value: 5, label: '🏃 운동선수/트레이너', desc: '고강도 훈련이 일상인 직업', multiplier: 1.9 },
 ];
 
-const MEAL_CFG = {
+const MEAL_CFG: Record<MealKey, {
+  label: string;
+  emoji: string;
+  gradient: string;
+  light: string;
+  border: string;
+  accent: string;
+  pill: string;
+  btnBorder: string;
+  btnHover: string;
+}> = {
   breakfast: { label: '아침', emoji: '🌅', gradient: 'from-sky-400 to-blue-500', light: 'bg-sky-50', border: 'border-sky-200', accent: 'text-sky-600', pill: 'bg-sky-100 text-sky-700', btnBorder: 'border-sky-300', btnHover: 'hover:bg-sky-50' },
   lunch:     { label: '점심', emoji: '☀️', gradient: 'from-orange-400 to-amber-500', light: 'bg-orange-50', border: 'border-orange-200', accent: 'text-orange-600', pill: 'bg-orange-100 text-orange-700', btnBorder: 'border-orange-300', btnHover: 'hover:bg-orange-50' },
   dinner:    { label: '저녁', emoji: '🌙', gradient: 'from-violet-500 to-purple-600', light: 'bg-violet-50', border: 'border-violet-200', accent: 'text-violet-600', pill: 'bg-violet-100 text-violet-700', btnBorder: 'border-violet-300', btnHover: 'hover:bg-violet-50' },
   snack:     { label: '간식', emoji: '🍩', gradient: 'from-pink-400 to-rose-500', light: 'bg-pink-50', border: 'border-pink-200', accent: 'text-pink-600', pill: 'bg-pink-100 text-pink-700', btnBorder: 'border-pink-300', btnHover: 'hover:bg-pink-50' },
 };
 
-function calcTotals(items) {
+function calcTotals(items: FoodItem[]): NutritionTotals {
   return items.reduce((acc, item) => ({ 
     calories: acc.calories + item.calories, 
     carbs: acc.carbs + item.carbs, 
@@ -52,7 +132,7 @@ function calcTotals(items) {
 }
 
 export default function Home() {
-    const [analysisResult, setAnalysisResult] = useState(null); // AI VISION 분석 결과를 저장하는 변수
+    const [analysisResult, setAnalysisResult] = useState<FoodItem[] | null>(null); // AI VISION 분석 결과를 저장하는 변수
   // 분석된 음식 중 사용자가 선택(체크)한 항목의 인덱스 번호 목록
   const [selectedFoods, setSelectedFoods] = useState<number[]>([]);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -60,8 +140,9 @@ export default function Home() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
+  const [profileId, setProfileId] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [userInfo, setUserInfo] = useState({ name: '', gender: 'male', age: '', height: '', weight: '', job: '' });
+  const [userInfo, setUserInfo] = useState<UserInfo>({ name: '', gender: 'male', age: '', height: '', weight: '', job: '' });
   const [isSaved, setIsSaved] = useState(false);
   
   // 1. 캘린더 날짜 상태 관리
@@ -89,27 +170,17 @@ export default function Home() {
   };
   
   // 2. 날짜별 고유 식단 기록 저장 - 하드코드 제거, 모든 끼니 빈 배열로 시작
-  const [mealsByDate, setMealsByDate] = useState({});
+  const [mealsByDate, setMealsByDate] = useState<MealsByDate>({});
 
   // 현재 선택된 날짜의 식단 가져오기
-  const currentMeals = mealsByDate[selectedDate] || {
-    breakfast: { items: [], imgUrl: null },
-    lunch: { items: [], imgUrl: null },
-    dinner: { items: [], imgUrl: null },
-    snack: { items: [], imgUrl: null },
-  };
+  const currentMeals = mealsByDate[selectedDate] || createEmptyMeals();
 
   const meals = currentMeals;
 
   // 상태 업데이트 헬퍼 함수
-  const setMeals = (updater) => {
+  const setMeals = (updater: MealsState | ((current: MealsState) => MealsState)) => {
     setMealsByDate(prev => {
-      const current = prev[selectedDate] || {
-        breakfast: { items: [], imgUrl: null },
-        lunch: { items: [], imgUrl: null },
-        dinner: { items: [], imgUrl: null },
-        snack: { items: [], imgUrl: null },
-      };
+      const current = prev[selectedDate] || createEmptyMeals();
       const updated = typeof updater === 'function' ? updater(current) : updater;
       return {
         ...prev,
@@ -118,32 +189,72 @@ export default function Home() {
     });
   };
 
-  const [mealModalType, setMealModalType] = useState(null);
+  const [mealModalType, setMealModalType] = useState<MealKey | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchMealType, setSearchMealType] = useState(null);
+  const [searchMealType, setSearchMealType] = useState<MealKey | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFoodForDetail, setSelectedFoodForDetail] = useState(null);
+  const [selectedFoodForDetail, setSelectedFoodForDetail] = useState<FoodItem | null>(null);
   // 실제 API에서 받아온 음식 검색 결과
-  const [searchResults, setSearchResults] = useState([]);
+  const [searchResults, setSearchResults] = useState<SearchFoodResponse[]>([]);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   // Gemini AI 메뉴 추천 결과 + 에러 상태
-  const [aiRecommendations, setAiRecommendations] = useState<any[]>([]);
+  const [aiRecommendations, setAiRecommendations] = useState<FoodItem[]>([]);
   const [isRecommendLoading, setIsRecommendLoading] = useState(false);
   const [recommendError, setRecommendError] = useState<string | null>(null);
   const [foodGrams, setFoodGrams] = useState(100);
   const [isPhotoOpen, setIsPhotoOpen] = useState(false);
-  const [photoMealType, setPhotoMealType] = useState(null);
-  const [modalPhotoUrl, setModalPhotoUrl] = useState(null);
-  const [analysisStatus, setAnalysisStatus] = useState('idle');
-  const fileInputRef = useRef(null);
+  const [photoMealType, setPhotoMealType] = useState<MealKey | null>(null);
+  const [modalPhotoUrl, setModalPhotoUrl] = useState<string | null>(null);
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // 즐겨찾기: 음식 이름만 저장하던 것 → 영양 데이터 전체 저장
-  const [favorites, setFavorites] = useState<any[]>([]);
-  const [graphPeriod, setGraphPeriod] = useState('daily');
+  const [favorites, setFavorites] = useState<FoodItem[]>([]);
+  const [graphPeriod, setGraphPeriod] = useState<GraphPeriod>('daily');
 
   const allItems = [...meals.breakfast.items, ...meals.lunch.items, ...meals.dinner.items, ...meals.snack.items];
   const totalConsumed = calcTotals(allItems);
   const pct = Math.min(100, Math.round((totalConsumed.calories / TARGET_CALORIES) * 100));
+
+  useEffect(() => {
+    if (!isLoggedIn || !isInitialSetupDone || !profileId) return;
+
+    const controller = new AbortController();
+    const loadMeals = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/meals/profile/${profileId}/date/${selectedDate}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+
+        const records: ApiMealRecord[] = await res.json();
+        const nextMeals = createEmptyMeals();
+        records.forEach((record) => {
+          const mealType = mealTypeFromApi(record.mealType);
+          if (!mealType) return;
+
+          record.foods?.forEach((food) => {
+            nextMeals[mealType].items.push({
+              name: food.name ?? food.foodName ?? '',
+              grams: food.grams ?? food.intakeAmount ?? 100,
+              calories: Math.round(food.calories ?? 0),
+              carbs: Math.round(food.carbs ?? food.carbohydrate ?? 0),
+              protein: Math.round(food.protein ?? 0),
+              fat: Math.round(food.fat ?? 0),
+              sodium: Math.round(food.sodium ?? 0),
+            });
+          });
+        });
+
+        setMealsByDate(prev => ({ ...prev, [selectedDate]: nextMeals }));
+      } catch (error: any) {
+        if (error?.name !== 'AbortError') console.warn('식단 API 조회 실패:', error);
+      }
+    };
+
+    void loadMeals();
+    return () => controller.abort();
+  }, [isLoggedIn, isInitialSetupDone, profileId, selectedDate]);
 
   // 아침/점심/저녁 중 하나라도 음식이 추가되면 Gemini AI 추천 자동 호출
   // 3초 디바운스 + AbortController → 연속 식단 추가 시 API 과호출 방지 (Gemini 할당량 보호)
@@ -166,7 +277,7 @@ export default function Home() {
       setIsRecommendLoading(true);
       setRecommendError(null);
       try {
-        const res = await fetch('http://localhost:5260/api/meals/recommend', {
+        const res = await fetch(`${API_BASE_URL}/api/meals/recommend`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -180,7 +291,7 @@ export default function Home() {
         if (res.ok) {
           const data = await res.json();
           // Gemini가 JSON 문자열로 반환하는 경우 파싱
-          const parsed = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
+          const parsed = parseAiJson(data.result);
           setAiRecommendations(Array.isArray(parsed) ? parsed : []);
         } else {
           // 503/500 등 서버 오류 시 에러 메시지 표시
@@ -206,17 +317,17 @@ export default function Home() {
     return () => { clearTimeout(timer); controller.abort(); };
   }, [meals.breakfast.items.length, meals.lunch.items.length, meals.dinner.items.length, selectedDate]);
 
-  const changeDate = (days) => {
+  const changeDate = (days: number) => {
     const d = new Date(selectedDate);
     d.setDate(d.getDate() + days);
     setSelectedDate(d.toISOString().split('T')[0]);
   };
 
   const closeLoginModal = () => { setIsLoginModalOpen(false); setLoginId(''); setLoginPw(''); setLoginError(''); };
-  const handleLoginSubmit = async (e) => {
+  const handleLoginSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://localhost:5260/api/auth/login', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ profileID: loginId, profilePW: loginPw }),
@@ -225,6 +336,7 @@ export default function Home() {
       if (res.ok) {
         const data = await res.json();
         setIsLoggedIn(true);
+        setProfileId(data.profileId ?? loginId);
         // 이미 가입된 사람이므로 신체정보 등록창을 건너뛰고 메인 화면으로 이동
         setIsInitialSetupDone(true);
         setUserInfo(prev => ({ ...prev, name: data.name }));
@@ -236,7 +348,7 @@ export default function Home() {
       setLoginError('서버 연결 실패');
     }
   };
-  const handleGoToRegister = (e) => {
+  const handleGoToRegister = (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     if (!loginId || !loginPw) {
       setLoginError('가입할 아이디와 비밀번호를 먼저 입력해주세요.');
@@ -245,16 +357,18 @@ export default function Home() {
     // 로그인 창을 닫고, 로그인 상태를 true로 만들되 가입은 안 된 상태(SetupDone=false)로 전환
     setIsLoggedIn(true);
     setIsInitialSetupDone(false);
-    closeLoginModal();
+    setProfileId(loginId);
+    setIsLoginModalOpen(false);
+    setLoginError('');
   };
 
-  const handleInitialSetupSubmit = async (e) => { 
+  const handleInitialSetupSubmit = async (e: FormEvent<HTMLFormElement>) => { 
   e.preventDefault();
   if (userInfo.job === '') { alert('직업을 선택해주세요.'); return; } 
 
   try {
     // 백엔드의 CreateUserProfileRequest DTO 스펙에 정확히 맞추어 보냅니다.
-    const response = await fetch('https://localhost:5260/api/auth/register', {
+    const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -266,7 +380,7 @@ export default function Home() {
         weight: parseFloat(userInfo.weight),
         age: parseInt(userInfo.age), // 백엔드가 int로 받으므로 변환 필수!
         targetCalories: TARGET_CALORIES,
-        job: parseInt(userInfo.job) // 숫자로 변환하여 Enum 매핑 보장!
+        job: Number(userInfo.job) // 숫자로 변환하여 Enum 매핑 보장!
       })
     });
 
@@ -278,6 +392,7 @@ export default function Home() {
       // 2. 백엔드에서 보낸 message("회원가입 성공")와 name을 조합해서 알림창을 띄웁니다.
       alert(`${data.name}님, ${data.message} 환영합니다!`); 
       
+      setProfileId(data.profileId ?? loginId);
       setIsInitialSetupDone(true); // 메인 화면으로 이동
       
     } else {
@@ -290,16 +405,16 @@ export default function Home() {
     alert('서버 연결에 실패했습니다.');
   }
 };
-  const handleSaveUser = (e) => { 
+  const handleSaveUser = (e: FormEvent<HTMLFormElement>) => { 
     e.preventDefault(); setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000); 
   };
-  const handleLogout = () => { setIsLoggedIn(false); setIsInitialSetupDone(false); setMealModalType(null); };
+  const handleLogout = () => { setIsLoggedIn(false); setIsInitialSetupDone(false); setMealModalType(null); setProfileId(''); };
   
-  const openMealModal = (type) => setMealModalType(type);
+  const openMealModal = (type: MealKey) => setMealModalType(type);
   const closeMealModal = () => setMealModalType(null);
 
-  const openSearch = (type) => { setSearchMealType(type); setSearchQuery(''); setSearchResults([]); setIsSearchOpen(true); setSelectedFoodForDetail(null); };
+  const openSearch = (type: MealKey) => { setSearchMealType(type); setSearchQuery(''); setSearchResults([]); setIsSearchOpen(true); setSelectedFoodForDetail(null); };
   const closeSearch = () => { setIsSearchOpen(false); setSearchMealType(null); setSelectedFoodForDetail(null); setSearchResults([]); };
 
   // 음식 이름으로 공공 API를 호출해 검색 결과를 가져오는 함수
@@ -307,7 +422,7 @@ export default function Home() {
     if (!query.trim()) { setSearchResults([]); return; }
     setIsSearchLoading(true);
     try {
-      const res = await fetch('http://localhost:5260/api/meals/search-food', {
+      const res = await fetch(`${API_BASE_URL}/api/meals/search-food`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ foodName: query }),
@@ -321,13 +436,52 @@ export default function Home() {
     }
   };
   
-  const handleSelectFoodItem = (food) => {
+  const handleSelectFoodItem = (food: FoodItem) => {
     setSelectedFoodForDetail(food);
     setFoodGrams(100);
   };
 
+  const syncFoodsToApi = async (mealType: MealKey, foods: FoodItem[]) => {
+    const ownerProfileId = profileId || loginId;
+    if (!ownerProfileId || foods.length === 0) return;
+
+    try {
+      const mealRes = await fetch(`${API_BASE_URL}/api/meals/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profileId: ownerProfileId,
+          mealType,
+          mealDate: selectedDate,
+        }),
+      });
+
+      if (!mealRes.ok) throw new Error(`식사 생성 실패 (${mealRes.status})`);
+      const { mealId } = await mealRes.json();
+      if (!mealId) throw new Error('식사 ID가 없습니다.');
+
+      await Promise.all(foods.map((food) => fetch(`${API_BASE_URL}/api/meals/add-food`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mealId,
+          foodName: food.name,
+          calories: food.calories,
+          carbohydrate: food.carbs,
+          protein: food.protein,
+          fat: food.fat,
+          sodium: food.sodium || 0,
+          grams: food.grams || 100,
+        }),
+      })));
+    } catch (error) {
+      console.warn('식단 API 저장 실패:', error);
+    }
+  };
+
   const confirmAddFood = () => {
     if (!searchMealType || !selectedFoodForDetail) return;
+    const mealType = searchMealType;
     const multiplier = foodGrams / 100;
     const finalFood = {
       name: selectedFoodForDetail.name,
@@ -340,21 +494,22 @@ export default function Home() {
     };
     setMeals(prev => ({ 
       ...prev, 
-      [searchMealType]: { 
-        ...prev[searchMealType], 
-        items: [...prev[searchMealType].items, finalFood] 
+      [mealType]: { 
+        ...prev[mealType], 
+        items: [...prev[mealType].items, finalFood] 
       } 
     }));
+    void syncFoodsToApi(mealType, [finalFood]);
     closeSearch();
-    setTimeout(() => openMealModal(searchMealType), 80);
+    setTimeout(() => openMealModal(mealType), 80);
   };
 
-  const handleRemoveFood = (type, idx) => {
+  const handleRemoveFood = (type: MealKey, idx: number) => {
     setMeals(prev => ({ ...prev, [type]: { ...prev[type], items: prev[type].items.filter((_, i) => i !== idx) } }));
   };
 
   // 즐겨찾기 토글 - 전체 음식 데이터를 저장
-  const toggleFavorite = (food: any) => {
+  const toggleFavorite = (food: FoodItem) => {
     setFavorites(prev =>
       prev.some(f => f.name === food.name)
         ? prev.filter(f => f.name !== food.name)
@@ -364,18 +519,18 @@ export default function Home() {
   // 즐겨찾기 여부 확인
   const isFavorite = (foodName: string) => favorites.some(f => f.name === foodName);
 
-  const openPhoto = (type) => { setPhotoMealType(type); setModalPhotoUrl(null); setAnalysisStatus('idle'); setIsPhotoOpen(true); };
+  const openPhoto = (type: MealKey) => { setPhotoMealType(type); setModalPhotoUrl(null); setAnalysisResult(null); setAnalysisStatus('idle'); setIsPhotoOpen(true); };
   const closePhoto = () => { setIsPhotoOpen(false); setPhotoMealType(null); };
-  const handleImageSelect = (e) => {
+  const handleImageSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) { const reader = new FileReader(); reader.onloadend = () => { setModalPhotoUrl(reader.result); setAnalysisStatus('idle'); }; reader.readAsDataURL(file); }
+    if (file) { const reader = new FileReader(); reader.onloadend = () => { if (typeof reader.result === 'string') { setModalPhotoUrl(reader.result); setAnalysisResult(null); setAnalysisStatus('idle'); } }; reader.readAsDataURL(file); }
   };
   const startAnalysis = async () => {
     if (!modalPhotoUrl) return;
     setAnalysisStatus('analyzing');
     try {
       const base64 = modalPhotoUrl.split(',')[1];
-      const res = await fetch('http://localhost:5260/api/meals/analyze', {
+      const res = await fetch(`${API_BASE_URL}/api/meals/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -387,10 +542,11 @@ export default function Home() {
       });
       if (res.ok) {
         const data = await res.json();
-        const foods = JSON.parse(data.result).foods;
+        const parsed = parseAiJson(data.result);
+        const foods = Array.isArray(parsed) ? parsed : parsed.foods;
 setAnalysisResult(foods);
         // 분석 완료 시 모든 음식을 기본으로 선택된 상태로 초기화
-        setSelectedFoods(foods.map((_, idx) => idx));
+        setSelectedFoods(foods.map((_: FoodItem, idx: number) => idx));
         setAnalysisStatus('done');
       } else {
         setAnalysisStatus('idle');
@@ -404,7 +560,8 @@ setAnalysisResult(foods);
   const confirmPhoto = () => {
     if (!photoMealType || !modalPhotoUrl || analysisStatus !== 'done' || !analysisResult) return;
     // selectedFoods에 있는 인덱스만 필터링해서 선택된 음식만 식단에 추가
-    const newItems = (analysisResult as any[]).filter((_, idx) => selectedFoods.includes(idx)).map((food: any) => ({
+    const mealType = photoMealType;
+    const newItems = analysisResult.filter((_, idx) => selectedFoods.includes(idx)).map((food) => ({
       name: food.name,
       grams: 100,
       calories: food.calories,
@@ -413,17 +570,16 @@ setAnalysisResult(foods);
       fat: food.fat,
       sodium: food.sodium || 0,
     }));
-    setMeals(prev => ({ ...prev, [photoMealType]: { imgUrl: modalPhotoUrl, items: [...prev[photoMealType].items, ...newItems] } }));
+    setMeals(prev => ({ ...prev, [mealType]: { imgUrl: modalPhotoUrl, items: [...prev[mealType].items, ...newItems] } }));
+    void syncFoodsToApi(mealType, newItems);
     closePhoto();
-    setTimeout(() => openMealModal(photoMealType), 80);
+    setTimeout(() => openMealModal(mealType), 80);
   };
-  const removeImage = (type) => setMeals(prev => ({ ...prev, [type]: { ...prev[type], imgUrl: null } }));
-
   // 특정 날짜의 총 칼로리를 mealsByDate에서 계산
   const getDayCalories = (dateStr: string) => {
     const day = mealsByDate[dateStr];
     if (!day) return 0;
-    return ['breakfast','lunch','dinner','snack'].reduce((sum, type) =>
+    return MEAL_KEYS.reduce((sum, type) =>
       sum + (day[type]?.items || []).reduce((s, item) => s + item.calories, 0), 0);
   };
 
@@ -435,7 +591,7 @@ setAnalysisResult(foods);
   };
 
   // 실제 mealsByDate 데이터와 TARGET_CALORIES 목표선으로 그래프 데이터 생성
-  const getGraphData = (period: string) => {
+  const getGraphData = (period: GraphPeriod) => {
     switch (period) {
       case 'daily': {
         // 각 끼니 개별 칼로리 (누적 아님)
@@ -564,11 +720,11 @@ setAnalysisResult(foods);
             <div>
               <label className="block text-xs font-extrabold text-black mb-1.5 pl-1">성별</label>
               <div className="flex gap-2">
-                {['male', 'female'].map(g => (<button key={g} type="button" onClick={() => setUserInfo({ ...userInfo, gender: g })} className={`flex-1 py-3 rounded-xl text-sm font-bold border transition-all ${userInfo.gender === g ? 'bg-orange-50 border-orange-500 text-orange-600 shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100'}`}>{g === 'male' ? '남성' : '여성'}</button>))}
+                {(['male', 'female'] as Gender[]).map(g => (<button key={g} type="button" onClick={() => setUserInfo({ ...userInfo, gender: g })} className={`flex-1 py-3 rounded-xl text-sm font-bold border transition-all ${userInfo.gender === g ? 'bg-orange-50 border-orange-500 text-orange-600 shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100'}`}>{g === 'male' ? '남성' : '여성'}</button>))}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              {[{ key: 'age', label: '나이 (세)', ph: '예: 24' }, { key: 'height', label: '신장 (cm)', ph: '예: 175' }].map(({ key, label, ph }) => (
+              {([{ key: 'age', label: '나이 (세)', ph: '예: 24' }, { key: 'height', label: '신장 (cm)', ph: '예: 175' }] as Array<{ key: 'age' | 'height'; label: string; ph: string }>).map(({ key, label, ph }) => (
                 <div key={key}><label className="block text-xs font-extrabold text-black mb-1.5 pl-1">{label}</label><input type="number" value={userInfo[key]} onChange={(e) => setUserInfo({ ...userInfo, [key]: e.target.value })} placeholder={ph} className="w-full text-black bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:bg-white focus:border-orange-500 transition-all" required /></div>
               ))}
             </div>
@@ -591,7 +747,6 @@ setAnalysisResult(foods);
     );
   }
 
-  const selectedJob = JOB_OPTIONS.find(j => j.value === userInfo.job);
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
       <header className="bg-white border-b border-slate-100 sticky top-0 z-40">
@@ -628,7 +783,7 @@ setAnalysisResult(foods);
 
               {/* 끼니 카드 영역 */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                {(['breakfast', 'lunch', 'dinner', 'snack']).map((type) => {
+                {MEAL_KEYS.map((type) => {
                   const cfg = MEAL_CFG[type];
                   const mealItems = meals[type].items;
                   const mealTotals = calcTotals(mealItems);
@@ -750,7 +905,7 @@ setAnalysisResult(foods);
                       <div className="flex items-center gap-1"><span className="w-3 h-0.5 border-t-2 border-dashed border-rose-500 block" /> <span className="text-slate-500">권장선</span></div>
                     </div>
                     <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
-                      {['daily', 'weekly', 'monthly', 'yearly'].map(period => (
+                      {(['daily', 'weekly', 'monthly', 'yearly'] as GraphPeriod[]).map(period => (
                         <button key={period} onClick={() => setGraphPeriod(period)} className={`text-[10px] font-black px-2 py-1 rounded-md transition-all ${graphPeriod === period ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}>
                           {period === 'daily' ? '일간' : period === 'weekly' ? '주간' : period === 'monthly' ? '월간' : '년간'}
                         </button>
@@ -824,10 +979,10 @@ setAnalysisResult(foods);
               <form onSubmit={handleSaveUser} className="space-y-3 pt-2 border-t border-slate-100/70">
                 <div className="flex gap-2">
                   <div className="flex-1"><label className="block text-[10px] font-bold text-slate-400 mb-1 pl-0.5">이름</label><input type="text" value={userInfo.name} onChange={(e) => setUserInfo({ ...userInfo, name: e.target.value })} className="w-full text-black bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:bg-white focus:border-orange-400 text-center" required /></div>
-                  <div className="flex-[1.2]"><label className="block text-[10px] font-bold text-slate-400 mb-1 pl-0.5">성별</label><div className="flex w-full bg-slate-50 border border-slate-200 rounded-lg overflow-hidden h-[30px]">{['male', 'female'].map(g => (<button key={g} type="button" onClick={() => setUserInfo({ ...userInfo, gender: g })} className={`flex-1 text-[10px] font-bold transition-all ${userInfo.gender === g ? 'bg-orange-500 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>{g === 'male' ? '남성' : '여성'}</button>))}</div></div>
+                  <div className="flex-[1.2]"><label className="block text-[10px] font-bold text-slate-400 mb-1 pl-0.5">성별</label><div className="flex w-full bg-slate-50 border border-slate-200 rounded-lg overflow-hidden h-[30px]">{(['male', 'female'] as Gender[]).map(g => (<button key={g} type="button" onClick={() => setUserInfo({ ...userInfo, gender: g })} className={`flex-1 text-[10px] font-bold transition-all ${userInfo.gender === g ? 'bg-orange-500 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>{g === 'male' ? '남성' : '여성'}</button>))}</div></div>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  {[{ key: 'age', label: '나이(세)' }, { key: 'height', label: '신장(cm)' }, { key: 'weight', label: '체중(kg)' }].map(({ key, label }) => (
+                  {([{ key: 'age', label: '나이(세)' }, { key: 'height', label: '신장(cm)' }, { key: 'weight', label: '체중(kg)' }] as Array<{ key: 'age' | 'height' | 'weight'; label: string }>).map(({ key, label }) => (
                     <div key={key}><label className="block text-[10px] font-bold text-slate-400 mb-1 pl-0.5">{label}</label><input type="number" value={userInfo[key]} onChange={(e) => setUserInfo(prev => ({ ...prev, [key]: e.target.value }))} className="w-full text-black bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:bg-white focus:border-orange-400 text-center" required /></div>
                   ))}
                 </div>
@@ -999,7 +1154,7 @@ setAnalysisResult(foods);
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4" onClick={(e) => { if (e.target === e.currentTarget) closeSearch(); }}>
           <div className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="font-bold text-slate-800">{MEAL_CFG[searchMealType]?.emoji} {MEAL_CFG[searchMealType]?.label} 메뉴 검색</h3>
+              <h3 className="font-bold text-slate-800">{searchMealType ? MEAL_CFG[searchMealType].emoji : ''} {searchMealType ? MEAL_CFG[searchMealType].label : ''} 메뉴 검색</h3>
               <button onClick={closeSearch} className="text-slate-400 hover:text-red-500"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
             <div className="p-6">
