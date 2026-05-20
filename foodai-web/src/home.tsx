@@ -1148,7 +1148,7 @@ setAnalysisResult(foods);
                 ) : (
                   <div className="flex flex-col items-center gap-3 text-center">
                     <svg className="w-12 h-12 text-slate-300 group-hover:text-orange-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 002-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                    <span className="text-sm font-bold text-slate-500">배달 음식 사진 업로드</span>
+                    <span className="text-sm font-bold text-slate-500">음식 사진 업로드</span>
                   </div>
                 )}
                 <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleImageSelect} />
