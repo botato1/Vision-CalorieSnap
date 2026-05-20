@@ -16,7 +16,8 @@ GO
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE dbo.UserProfile
 (
-    ProfileID        INT             IDENTITY(1,1) PRIMARY KEY,
+    ProfileID        NVARCHAR(50)    PRIMARY KEY,
+    ProfilePW        NVARCHAR(50)      ,
     Name             NVARCHAR(50)    NOT NULL,
     Male             BIT             NOT NULL,              -- 1: 남, 0: 여
     Height           FLOAT           NOT NULL,              -- cm
@@ -33,7 +34,7 @@ GO
 CREATE TABLE dbo.MealRecords
 (
     MealID      INT          IDENTITY(1,1) PRIMARY KEY,
-    ProfileID   INT          NOT NULL,
+    ProfileID   NVARCHAR(50)          NOT NULL,
     MealType    TINYINT      NOT NULL,    -- 0:아침, 1:점심, 2:저녁, 3:간식
     MealDate    DATE         NOT NULL,    -- 식사 날짜
     MealTime    TIME         NOT NULL,    -- 식사 시간
@@ -108,8 +109,8 @@ GO
 -- ─────────────────────────────────────────────────────────────
 -- 5. 초기 데이터
 -- ─────────────────────────────────────────────────────────────
-INSERT INTO dbo.UserProfile (Name, Male, Height, Weight, BirthDate, TargetCalories)
-VALUES (N'기본 사용자', 1, 175, 70, '1995-01-01', 2000);
+INSERT INTO dbo.UserProfile (ProfileID, ProfilePW, Name, Male, Height, Weight, BirthDate, TargetCalories)
+VALUES ('test_user_01', '1234', N'기본 사용자', 1, 175, 70, '1995-01-01', 2000);
 GO
 
 PRINT '✓ 스키마 생성 완료';
