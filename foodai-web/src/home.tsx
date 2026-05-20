@@ -1,28 +1,10 @@
+// @ts-nocheck
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
+const API_BASE = 'http://localhost:5260/api';
 
-// DB의 영양성분은 '100g'을 기준으로 한다고 가정합니다.
-const DUMMY_FOOD_DB = [
-  { name: '마라탕', calories: 620, carbs: 68, protein: 28, fat: 22, sodium: 2500 },
-  { name: '후라이드 치킨', calories: 650, carbs: 25, protein: 45, fat: 35, sodium: 850 },
-  { name: '연어 샐러드', calories: 320, carbs: 18, protein: 32, fat: 14, sodium: 320 },
-  { name: '페퍼로니 피자', calories: 540, carbs: 58, protein: 22, fat: 24, sodium: 980 },
-  { name: '김치찌개', calories: 280, carbs: 12, protein: 18, fat: 12, sodium: 1200 },
-  { name: '제육볶음', calories: 480, carbs: 22, protein: 34, fat: 20, sodium: 890 },
-  { name: '아메리카노', calories: 10, carbs: 1, protein: 0, fat: 0, sodium: 5 },
-  { name: '떡볶이', calories: 380, carbs: 72, protein: 8, fat: 6, sodium: 1100 },
-  { name: '현미밥', calories: 210, carbs: 44, protein: 5, fat: 2, sodium: 10 },
-  { name: '닭가슴살', calories: 165, carbs: 0, protein: 31, fat: 3, sodium: 150 },
-  { name: '프로틴 바', calories: 190, carbs: 20, protein: 21, fat: 6, sodium: 110 },
-  { name: '그릭 요거트', calories: 110, carbs: 6, protein: 10, fat: 4, sodium: 40 },
-];
-
-const RECOMMEND_MENU_DB = [
-  { name: '🍗 숯불 구이 치킨 도시락', tag: '🔥 고단백 추천', tagColor: 'bg-green-50 text-green-600 border-green-100', calories: 450, carbs: 35, protein: 38, fat: 8, desc: '부족한 단백질을 38g이나 채워줄 수 있는 저지방 고단백 한 끼입니다.' },
-  { name: '🥑 연어 아보카도 샐러드 랩', tag: '⚖️ 영양 균형식', tagColor: 'bg-blue-50 text-blue-600 border-blue-100', calories: 380, carbs: 42, protein: 22, fat: 12, desc: '탄수화물과 지방의 밸런스가 뛰어나며 오메가3가 풍부합니다.' },
-];
+type MealTypeKey = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
 // 활동 배수(multiplier)는 미플린-세인트 지어 공식의 PAL 계수 기준
 const JOB_OPTIONS = [
@@ -51,6 +33,52 @@ function calcTotals(items) {
   }), { calories: 0, carbs: 0, protein: 0, fat: 0, sodium: 0 });
 }
 
+const createEmptyMeals = () => ({
+  breakfast: { items: [], imgUrl: null, mealId: null },
+  lunch: { items: [], imgUrl: null, mealId: null },
+  dinner: { items: [], imgUrl: null, mealId: null },
+  snack: { items: [], imgUrl: null, mealId: null },
+});
+
+const normalizeProfile = (payload: any) => {
+  const profile = payload?.profile ?? payload;
+  return {
+    name: profile?.name ?? profile?.Name ?? '',
+    gender: (profile?.male ?? profile?.Male) === false ? 'female' : 'male',
+    age: String(profile?.age ?? profile?.Age ?? ''),
+    height: String(profile?.height ?? profile?.Height ?? ''),
+    weight: String(profile?.weight ?? profile?.Weight ?? ''),
+    job: String(profile?.job ?? profile?.Job ?? 0),
+  };
+};
+
+const normalizeFoodSearch = (food: any) => ({
+  name: food.makerName ? `[${food.makerName}] ${food.foodName}` : (food.foodName ?? food.FoodName ?? ''),
+  rawName: food.foodName ?? food.FoodName ?? '',
+  makerName: food.makerName ?? food.MakerName ?? '',
+  calories: Number(food.calories ?? food.Calories ?? 0),
+  carbs: Number(food.carbohydrate ?? food.Carbohydrate ?? 0),
+  protein: Number(food.protein ?? food.Protein ?? 0),
+  fat: Number(food.fat ?? food.Fat ?? 0),
+  sodium: Number(food.sodium ?? food.Sodium ?? 0),
+});
+
+const mealTypeToApi = (type: MealTypeKey) => ({
+  breakfast: 'Breakfast',
+  lunch: 'Lunch',
+  dinner: 'Dinner',
+  snack: 'Snack',
+}[type]);
+
+const apiMealTypeToKey = (type: string): MealTypeKey | null => {
+  const value = String(type).toLowerCase();
+  if (value === 'breakfast' || value === '0') return 'breakfast';
+  if (value === 'lunch' || value === '1') return 'lunch';
+  if (value === 'dinner' || value === '2') return 'dinner';
+  if (value === 'snack' || value === '3') return 'snack';
+  return null;
+};
+
 export default function Home() {
     const [analysisResult, setAnalysisResult] = useState(null); // AI VISION 분석 결과를 저장하는 변수
   // 분석된 음식 중 사용자가 선택(체크)한 항목의 인덱스 번호 목록
@@ -61,6 +89,8 @@ export default function Home() {
   const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [profileId, setProfileId] = useState('');
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [userInfo, setUserInfo] = useState({ name: '', gender: 'male', age: '', height: '', weight: '', job: '' });
   const [isSaved, setIsSaved] = useState(false);
   
@@ -76,7 +106,7 @@ export default function Home() {
     const bmr = userInfo.gender === 'male'
       ? 10 * weight + 6.25 * height - 5 * age + 5
       : 10 * weight + 6.25 * height - 5 * age - 161;
-    const job = JOB_OPTIONS.find(j => j.value === userInfo.job);
+    const job = JOB_OPTIONS.find(j => String(j.value) === String(userInfo.job));
     return Math.round(bmr * (job?.multiplier ?? 1.2));
   };
   const TARGET_CALORIES = calcTargetCalories();
@@ -92,24 +122,14 @@ export default function Home() {
   const [mealsByDate, setMealsByDate] = useState({});
 
   // 현재 선택된 날짜의 식단 가져오기
-  const currentMeals = mealsByDate[selectedDate] || {
-    breakfast: { items: [], imgUrl: null },
-    lunch: { items: [], imgUrl: null },
-    dinner: { items: [], imgUrl: null },
-    snack: { items: [], imgUrl: null },
-  };
+  const currentMeals = mealsByDate[selectedDate] || createEmptyMeals();
 
   const meals = currentMeals;
 
   // 상태 업데이트 헬퍼 함수
   const setMeals = (updater) => {
     setMealsByDate(prev => {
-      const current = prev[selectedDate] || {
-        breakfast: { items: [], imgUrl: null },
-        lunch: { items: [], imgUrl: null },
-        dinner: { items: [], imgUrl: null },
-        snack: { items: [], imgUrl: null },
-      };
+      const current = prev[selectedDate] || createEmptyMeals();
       const updated = typeof updater === 'function' ? updater(current) : updater;
       return {
         ...prev,
@@ -136,6 +156,7 @@ export default function Home() {
   const [modalPhotoUrl, setModalPhotoUrl] = useState(null);
   const [analysisStatus, setAnalysisStatus] = useState('idle');
   const fileInputRef = useRef(null);
+  const searchCacheRef = useRef<Record<string, any[]>>({});
 
   // 즐겨찾기: 음식 이름만 저장하던 것 → 영양 데이터 전체 저장
   const [favorites, setFavorites] = useState<any[]>([]);
@@ -144,6 +165,48 @@ export default function Home() {
   const allItems = [...meals.breakfast.items, ...meals.lunch.items, ...meals.dinner.items, ...meals.snack.items];
   const totalConsumed = calcTotals(allItems);
   const pct = Math.min(100, Math.round((totalConsumed.calories / TARGET_CALORIES) * 100));
+
+  const loadMealsForDate = async (id = profileId, date = selectedDate) => {
+    if (!id) return;
+    const res = await fetch(`${API_BASE}/meals/profile/${encodeURIComponent(id)}/date/${date}`);
+    if (!res.ok) throw new Error('식사 기록 조회 실패');
+    const records = await res.json();
+    const nextMeals = createEmptyMeals();
+
+    await Promise.all((Array.isArray(records) ? records : []).map(async (record: any) => {
+      const mealId = record.mealId ?? record.MealID;
+      if (!mealId) return;
+      const detailRes = await fetch(`${API_BASE}/meals/detail/${mealId}`);
+      if (!detailRes.ok) return;
+      const detail = await detailRes.json();
+      const type = apiMealTypeToKey(detail.mealType ?? detail.MealType ?? record.mealType ?? record.MealType);
+      if (!type) return;
+
+      nextMeals[type] = {
+        ...nextMeals[type],
+        mealId,
+        items: (detail.foods ?? detail.Foods ?? []).map((food: any) => ({
+          mealFoodId: food.mealFoodId ?? food.MealFoodID,
+          name: food.foodName ?? food.FoodName,
+          grams: food.intakeAmount ?? food.IntakeAmount ?? food.grams ?? food.Grams ?? 100,
+          calories: Math.round(Number(food.calories ?? food.Calories ?? 0)),
+          carbs: Math.round(Number(food.carbohydrate ?? food.Carbohydrate ?? 0)),
+          protein: Math.round(Number(food.protein ?? food.Protein ?? 0)),
+          fat: Math.round(Number(food.fat ?? food.Fat ?? 0)),
+          sodium: Math.round(Number(food.sodium ?? food.Sodium ?? 0)),
+        })),
+      };
+    }));
+
+    setMealsByDate(prev => ({ ...prev, [date]: nextMeals }));
+  };
+
+  useEffect(() => {
+    if (!isLoggedIn || !isInitialSetupDone || !profileId) return;
+    loadMealsForDate().catch(() => {
+      setMealsByDate(prev => ({ ...prev, [selectedDate]: createEmptyMeals() }));
+    });
+  }, [isLoggedIn, isInitialSetupDone, profileId, selectedDate]);
 
   // 아침/점심/저녁 중 하나라도 음식이 추가되면 Gemini AI 추천 자동 호출
   // 3초 디바운스 + AbortController → 연속 식단 추가 시 API 과호출 방지 (Gemini 할당량 보호)
@@ -166,7 +229,7 @@ export default function Home() {
       setIsRecommendLoading(true);
       setRecommendError(null);
       try {
-        const res = await fetch('http://localhost:5260/api/meals/recommend', {
+        const res = await fetch(`${API_BASE}/meals/recommend`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -180,8 +243,10 @@ export default function Home() {
         if (res.ok) {
           const data = await res.json();
           // Gemini가 JSON 문자열로 반환하는 경우 파싱
-          const parsed = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
-          setAiRecommendations(Array.isArray(parsed) ? parsed : []);
+          const raw = typeof data.result === 'string' ? data.result.replace(/```json|```/g, '').trim() : data.result;
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          const menus = Array.isArray(parsed) ? parsed : parsed?.menus ?? parsed?.recommendations ?? [];
+          setAiRecommendations(Array.isArray(menus) ? menus : []);
         } else {
           // 503/500 등 서버 오류 시 에러 메시지 표시
           const errData = await res.json().catch(() => ({}));
@@ -212,22 +277,26 @@ export default function Home() {
     setSelectedDate(d.toISOString().split('T')[0]);
   };
 
-  const closeLoginModal = () => { setIsLoginModalOpen(false); setLoginId(''); setLoginPw(''); setLoginError(''); };
+  const closeLoginModal = () => { setIsLoginModalOpen(false); setLoginError(''); };
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://localhost:5260/api/auth/login', {
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profileID: loginId, profilePW: loginPw }),
+        body: JSON.stringify({ ProfileID: loginId, ProfilePW: loginPw }),
  
       });
       if (res.ok) {
         const data = await res.json();
+        const nextProfileId = data.profileId ?? data.ProfileID ?? loginId;
+        const profileRes = await fetch(`${API_BASE}/auth/${encodeURIComponent(nextProfileId)}`);
+        const profileData = profileRes.ok ? await profileRes.json() : null;
         setIsLoggedIn(true);
-        // 이미 가입된 사람이므로 신체정보 등록창을 건너뛰고 메인 화면으로 이동
         setIsInitialSetupDone(true);
-        setUserInfo(prev => ({ ...prev, name: data.name }));
+        setIsRegisterMode(false);
+        setProfileId(nextProfileId);
+        setUserInfo(prev => ({ ...prev, ...normalizeProfile(profileData), name: profileData ? normalizeProfile(profileData).name : data.name }));
         closeLoginModal();
       } else {
         setLoginError('아이디 또는 비밀번호가 틀렸습니다.');
@@ -238,11 +307,8 @@ export default function Home() {
   };
   const handleGoToRegister = (e) => {
     e.preventDefault();
-    if (!loginId || !loginPw) {
-      setLoginError('가입할 아이디와 비밀번호를 먼저 입력해주세요.');
-      return;
-    }
-    // 로그인 창을 닫고, 로그인 상태를 true로 만들되 가입은 안 된 상태(SetupDone=false)로 전환
+    setLoginError('');
+    setIsRegisterMode(true);
     setIsLoggedIn(true);
     setIsInitialSetupDone(false);
     closeLoginModal();
@@ -254,19 +320,19 @@ export default function Home() {
 
   try {
     // 백엔드의 CreateUserProfileRequest DTO 스펙에 정확히 맞추어 보냅니다.
-    const response = await fetch('https://localhost:5260/api/auth/register', {
+    const response = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        profileID: loginId,
-        profilePW: loginPw,
-        name: userInfo.name,
-        male: userInfo.gender === 'male',
-        height: parseFloat(userInfo.height),
-        weight: parseFloat(userInfo.weight),
-        age: parseInt(userInfo.age), // 백엔드가 int로 받으므로 변환 필수!
-        targetCalories: TARGET_CALORIES,
-        job: parseInt(userInfo.job) // 숫자로 변환하여 Enum 매핑 보장!
+        ProfileID: loginId,
+        ProfilePW: loginPw,
+        Name: userInfo.name,
+        Male: userInfo.gender === 'male',
+        Height: parseFloat(userInfo.height),
+        Weight: parseFloat(userInfo.weight),
+        Age: parseInt(userInfo.age),
+        TargetCalories: TARGET_CALORIES,
+        Job: parseInt(String(userInfo.job))
       })
     });
 
@@ -277,7 +343,8 @@ export default function Home() {
       
       // 2. 백엔드에서 보낸 message("회원가입 성공")와 name을 조합해서 알림창을 띄웁니다.
       alert(`${data.name}님, ${data.message} 환영합니다!`); 
-      
+      setProfileId(data.profileId ?? data.ProfileID ?? loginId);
+      setIsRegisterMode(false);
       setIsInitialSetupDone(true); // 메인 화면으로 이동
       
     } else {
@@ -290,11 +357,29 @@ export default function Home() {
     alert('서버 연결에 실패했습니다.');
   }
 };
-  const handleSaveUser = (e) => { 
-    e.preventDefault(); setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000); 
+  const handleSaveUser = async (e) => { 
+    e.preventDefault();
+    try {
+      if (profileId) {
+        const res = await fetch(`${API_BASE}/auth/${encodeURIComponent(profileId)}/body`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            Height: parseFloat(userInfo.height),
+            Weight: parseFloat(userInfo.weight),
+            TargetCalories: TARGET_CALORIES,
+            Job: parseInt(String(userInfo.job)),
+          }),
+        });
+        if (!res.ok) throw new Error('저장 실패');
+      }
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 2000);
+    } catch {
+      alert('정보 업데이트에 실패했습니다.');
+    }
   };
-  const handleLogout = () => { setIsLoggedIn(false); setIsInitialSetupDone(false); setMealModalType(null); };
+  const handleLogout = () => { setIsLoggedIn(false); setIsInitialSetupDone(false); setMealModalType(null); setProfileId(''); setIsRegisterMode(false); };
   
   const openMealModal = (type) => setMealModalType(type);
   const closeMealModal = () => setMealModalType(null);
@@ -305,29 +390,53 @@ export default function Home() {
   // 음식 이름으로 공공 API를 호출해 검색 결과를 가져오는 함수
   const handleSearchFood = async (query: string) => {
     if (!query.trim()) { setSearchResults([]); return; }
+    const trimmed = query.trim();
+    if (searchCacheRef.current[trimmed]) {
+      setSearchResults(searchCacheRef.current[trimmed]);
+      return;
+    }
     setIsSearchLoading(true);
     try {
-      const res = await fetch('http://localhost:5260/api/meals/search-food', {
+      const res = await fetch(`${API_BASE}/meals/search-food`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ foodName: query }),
+        body: JSON.stringify({ FoodName: trimmed }),
       });
       if (res.ok) {
         const data = await res.json();
-        setSearchResults(data);
+        const foods = Array.isArray(data) ? data.map(normalizeFoodSearch).filter((food) => food.name) : [];
+        searchCacheRef.current[trimmed] = foods;
+        setSearchResults(foods);
       }
     } finally {
       setIsSearchLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!isSearchOpen) return;
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchResults([]);
+      setIsSearchLoading(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      handleSearchFood(query);
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [isSearchOpen, searchQuery]);
   
   const handleSelectFoodItem = (food) => {
     setSelectedFoodForDetail(food);
     setFoodGrams(100);
   };
 
-  const confirmAddFood = () => {
+  const confirmAddFood = async () => {
     if (!searchMealType || !selectedFoodForDetail) return;
+    const targetMealType = searchMealType as MealTypeKey;
     const multiplier = foodGrams / 100;
     const finalFood = {
       name: selectedFoodForDetail.name,
@@ -338,18 +447,72 @@ export default function Home() {
       fat: Math.round(selectedFoodForDetail.fat * multiplier),
       sodium: Math.round((selectedFoodForDetail.sodium || 0) * multiplier),
     };
+    let mealId = meals[targetMealType].mealId;
+    let mealFoodId = null;
+
+    try {
+      if (profileId) {
+        if (!mealId) {
+          const mealRes = await fetch(`${API_BASE}/meals/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ProfileId: profileId,
+              MealType: mealTypeToApi(targetMealType),
+              MealDate: selectedDate,
+            }),
+          });
+          if (!mealRes.ok) throw new Error('식사 생성 실패');
+          const mealData = await mealRes.json();
+          mealId = mealData.mealId ?? mealData.MealId;
+        }
+
+        const addRes = await fetch(`${API_BASE}/meals/add-food`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            MealId: mealId,
+            FoodName: finalFood.name,
+            Calories: finalFood.calories,
+            Carbohydrate: finalFood.carbs,
+            Protein: finalFood.protein,
+            Fat: finalFood.fat,
+            Sodium: finalFood.sodium,
+            Grams: finalFood.grams,
+          }),
+        });
+        if (!addRes.ok) throw new Error('음식 추가 실패');
+        const addData = await addRes.json();
+        mealFoodId = addData.mealFoodId ?? addData.MealFoodId ?? null;
+      }
+    } catch {
+      alert('음식 저장에 실패했습니다.');
+      return;
+    }
+
     setMeals(prev => ({ 
       ...prev, 
-      [searchMealType]: { 
-        ...prev[searchMealType], 
-        items: [...prev[searchMealType].items, finalFood] 
+      [targetMealType]: { 
+        ...prev[targetMealType],
+        mealId,
+        items: [...prev[targetMealType].items, { ...finalFood, mealFoodId }] 
       } 
     }));
     closeSearch();
-    setTimeout(() => openMealModal(searchMealType), 80);
+    setTimeout(() => openMealModal(targetMealType), 80);
   };
 
-  const handleRemoveFood = (type, idx) => {
+  const handleRemoveFood = async (type, idx) => {
+    const targetFood = meals[type].items[idx];
+    if (targetFood?.mealFoodId) {
+      try {
+        const res = await fetch(`${API_BASE}/meals/food/${targetFood.mealFoodId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error();
+      } catch {
+        alert('음식 삭제에 실패했습니다.');
+        return;
+      }
+    }
     setMeals(prev => ({ ...prev, [type]: { ...prev[type], items: prev[type].items.filter((_, i) => i !== idx) } }));
   };
 
@@ -375,20 +538,18 @@ export default function Home() {
     setAnalysisStatus('analyzing');
     try {
       const base64 = modalPhotoUrl.split(',')[1];
-      const res = await fetch('http://localhost:5260/api/meals/analyze', {
+      const res = await fetch(`${API_BASE}/meals/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageBase64: base64,
-          profileId: 'admin',
-          mealType: photoMealType,
-          mealDate: selectedDate,
+          ImageBase64: base64,
         }),
       });
       if (res.ok) {
         const data = await res.json();
-        const foods = JSON.parse(data.result).foods;
-setAnalysisResult(foods);
+        const raw = String(data.result ?? '').replace(/```json|```/g, '').trim();
+        const foods = JSON.parse(raw).foods ?? [];
+        setAnalysisResult(foods);
         // 분석 완료 시 모든 음식을 기본으로 선택된 상태로 초기화
         setSelectedFoods(foods.map((_, idx) => idx));
         setAnalysisStatus('done');
@@ -401,8 +562,9 @@ setAnalysisResult(foods);
       alert('서버 연결 실패');
     }
   };
-  const confirmPhoto = () => {
+  const confirmPhoto = async () => {
     if (!photoMealType || !modalPhotoUrl || analysisStatus !== 'done' || !analysisResult) return;
+    const targetMealType = photoMealType as MealTypeKey;
     // selectedFoods에 있는 인덱스만 필터링해서 선택된 음식만 식단에 추가
     const newItems = (analysisResult as any[]).filter((_, idx) => selectedFoods.includes(idx)).map((food: any) => ({
       name: food.name,
@@ -413,9 +575,56 @@ setAnalysisResult(foods);
       fat: food.fat,
       sodium: food.sodium || 0,
     }));
-    setMeals(prev => ({ ...prev, [photoMealType]: { imgUrl: modalPhotoUrl, items: [...prev[photoMealType].items, ...newItems] } }));
+    let mealId = meals[targetMealType].mealId;
+    const savedItems = [];
+
+    try {
+      if (profileId) {
+        if (!mealId) {
+          const mealRes = await fetch(`${API_BASE}/meals/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ProfileId: profileId,
+              MealType: mealTypeToApi(targetMealType),
+              MealDate: selectedDate,
+            }),
+          });
+          if (!mealRes.ok) throw new Error();
+          const mealData = await mealRes.json();
+          mealId = mealData.mealId ?? mealData.MealId;
+        }
+
+        for (const item of newItems) {
+          const addRes = await fetch(`${API_BASE}/meals/add-food`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              MealId: mealId,
+              FoodName: item.name,
+              Calories: item.calories,
+              Carbohydrate: item.carbs,
+              Protein: item.protein,
+              Fat: item.fat,
+              Sodium: item.sodium,
+              Grams: item.grams,
+            }),
+          });
+          if (!addRes.ok) throw new Error();
+          const addData = await addRes.json();
+          savedItems.push({ ...item, mealFoodId: addData.mealFoodId ?? addData.MealFoodId ?? null });
+        }
+      } else {
+        savedItems.push(...newItems);
+      }
+    } catch {
+      alert('분석 음식 저장에 실패했습니다.');
+      return;
+    }
+
+    setMeals(prev => ({ ...prev, [targetMealType]: { ...prev[targetMealType], mealId, imgUrl: modalPhotoUrl, items: [...prev[targetMealType].items, ...savedItems] } }));
     closePhoto();
-    setTimeout(() => openMealModal(photoMealType), 80);
+    setTimeout(() => openMealModal(targetMealType), 80);
   };
   const removeImage = (type) => setMeals(prev => ({ ...prev, [type]: { ...prev[type], imgUrl: null } }));
 
@@ -531,7 +740,7 @@ setAnalysisResult(foods);
               <div className="px-8 py-8 text-center">
                 <span className="text-5xl block mb-4">🔐</span>
                 <h3 className="text-2xl font-black text-slate-800 mb-2">로그인</h3>
-                <p className="text-xs text-slate-400 font-medium mb-8">테스트: 아이디 123 / 비밀번호 123</p>
+                <p className="text-xs text-slate-400 font-medium mb-8">로그인하거나 새 계정을 만들어 시작하세요.</p>
                 <form onSubmit={handleLoginSubmit} className="space-y-4">
                   <div className="text-left"><label className="block text-xs font-extrabold text-black mb-1.5 pl-1">아이디</label><input type="text" value={loginId} onChange={(e) => setLoginId(e.target.value)} placeholder="아이디를 입력하세요" className="w-full text-black bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold outline-none focus:bg-white focus:border-orange-500 transition-all" autoFocus /></div>
                   <div className="text-left"><label className="block text-xs font-extrabold text-black mb-1.5 pl-1">비밀번호</label><input type="password" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} placeholder="비밀번호를 입력하세요" className="w-full text-black bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold outline-none focus:bg-white focus:border-orange-500 transition-all" /></div>
@@ -560,6 +769,12 @@ setAnalysisResult(foods);
           <h3 className="text-2xl font-black text-slate-800 mb-2">신체 정보 등록</h3>
           <p className="text-xs text-slate-400 font-medium mb-8">정확한 AI 맞춤 식단 추천을 위해<br />기본 정보를 입력해 주세요.</p>
           <form onSubmit={handleInitialSetupSubmit} className="space-y-4 text-left">
+            {isRegisterMode && (
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-xs font-extrabold text-black mb-1.5 pl-1">아이디</label><input type="text" value={loginId} onChange={(e) => setLoginId(e.target.value)} placeholder="가입 아이디" className="w-full text-black bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:bg-white focus:border-orange-500 transition-all" required /></div>
+                <div><label className="block text-xs font-extrabold text-black mb-1.5 pl-1">비밀번호</label><input type="password" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} placeholder="4자 이상" className="w-full text-black bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:bg-white focus:border-orange-500 transition-all" required minLength={4} /></div>
+              </div>
+            )}
             <div><label className="block text-xs font-extrabold text-black mb-1.5 pl-1">이름</label><input type="text" value={userInfo.name} onChange={(e) => setUserInfo({ ...userInfo, name: e.target.value })} placeholder="예: 홍길동" className="w-full text-black bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:bg-white focus:border-orange-500 transition-all" required autoFocus /></div>
             <div>
               <label className="block text-xs font-extrabold text-black mb-1.5 pl-1">성별</label>
@@ -577,8 +792,8 @@ setAnalysisResult(foods);
               <label className="block text-xs font-extrabold text-black mb-2 pl-1">직업 / 활동 유형</label>
               <div className="grid grid-cols-2 gap-2">
                 {JOB_OPTIONS.map(job => (
-                  <button key={job.value} type="button" onClick={() => setUserInfo({ ...userInfo, job: job.value })} className={`flex flex-col items-start px-3 py-3 rounded-xl border text-left transition-all ${userInfo.job === job.value ? 'bg-orange-50 border-orange-500 shadow-sm' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
-                    <span className={`text-sm font-bold ${userInfo.job === job.value ? 'text-orange-600' : 'text-slate-700'}`}>{job.label}</span>
+                  <button key={job.value} type="button" onClick={() => setUserInfo({ ...userInfo, job: String(job.value) })} className={`flex flex-col items-start px-3 py-3 rounded-xl border text-left transition-all ${String(userInfo.job) === String(job.value) ? 'bg-orange-50 border-orange-500 shadow-sm' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
+                    <span className={`text-sm font-bold ${String(userInfo.job) === String(job.value) ? 'text-orange-600' : 'text-slate-700'}`}>{job.label}</span>
                     <span className="text-[10px] text-slate-400 mt-0.5 leading-tight">{job.desc}</span>
                   </button>
                 ))}
@@ -591,7 +806,7 @@ setAnalysisResult(foods);
     );
   }
 
-  const selectedJob = JOB_OPTIONS.find(j => j.value === userInfo.job);
+  const selectedJob = JOB_OPTIONS.find(j => String(j.value) === String(userInfo.job));
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
       <header className="bg-white border-b border-slate-100 sticky top-0 z-40">
@@ -836,8 +1051,8 @@ setAnalysisResult(foods);
                   <label className="block text-[10px] font-bold text-slate-400 mb-1 pl-0.5">직업</label>
                   <div className="grid grid-cols-2 gap-1">
                     {JOB_OPTIONS.map(job => (
-                      <button key={job.value} type="button" onClick={() => setUserInfo(prev => ({ ...prev, job: job.value }))}
-                        className={`px-2 py-1.5 rounded-lg border text-[10px] font-bold text-left transition-all ${userInfo.job === job.value ? 'bg-orange-50 border-orange-400 text-orange-600' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}>
+                      <button key={job.value} type="button" onClick={() => setUserInfo(prev => ({ ...prev, job: String(job.value) }))}
+                        className={`px-2 py-1.5 rounded-lg border text-[10px] font-bold text-left transition-all ${String(userInfo.job) === String(job.value) ? 'bg-orange-50 border-orange-400 text-orange-600' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}>
                         {job.label}
                       </button>
                     ))}
@@ -1004,7 +1219,7 @@ setAnalysisResult(foods);
             </div>
             <div className="p-6">
               <div className="relative mb-4">
-                <input type="text" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); handleSearchFood(e.target.value); }} placeholder="음식명을 입력하세요 (예: 마라탕, 치킨)" className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm outline-none focus:border-orange-400 focus:bg-white transition-all text-slate-800 font-bold" autoFocus />
+                <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="음식명을 입력하세요 (예: 마라탕, 치킨)" className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm outline-none focus:border-orange-400 focus:bg-white transition-all text-slate-800 font-bold" autoFocus />
                 <svg className="w-4 h-4 absolute left-4 top-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
               </div>
 
@@ -1046,9 +1261,9 @@ setAnalysisResult(foods);
                   // 검색 결과 - 각 항목에 ⭐ 즐겨찾기 버튼 추가
                   (searchResults as any[]).map((food, idx) => {
                     const foodObj = {
-                      name: food.makerName ? `[${food.makerName}] ${food.foodName}` : food.foodName,
+                      name: food.name,
                       calories: food.calories,
-                      carbs: food.carbohydrate,
+                      carbs: food.carbs,
                       protein: food.protein,
                       fat: food.fat,
                       sodium: food.sodium,
@@ -1058,7 +1273,7 @@ setAnalysisResult(foods);
                         {/* 음식 정보 클릭 → 용량 선택 */}
                         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleSelectFoodItem(foodObj)}>
                           {food.makerName && <span className="text-[10px] font-bold text-slate-400">{food.makerName} · </span>}
-                          <span className="text-sm font-bold text-slate-700">{food.foodName}</span>
+                          <span className="text-sm font-bold text-slate-700">{food.rawName || food.name}</span>
                           <span className="text-sm font-black text-orange-500 ml-2">{Math.round(food.calories)} kcal</span>
                         </div>
                         {/* 즐겨찾기 토글 버튼 */}

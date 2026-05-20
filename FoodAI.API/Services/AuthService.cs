@@ -129,7 +129,7 @@ namespace FoodAI.API.Services
                 SET    
                        Height         = @Height,
                        Weight         = @Weight,
-                       TargetCalories = @TargetCalories
+                       TargetCalories = @TargetCalories,
                        Job            = @Job
                 WHERE  ProfileID = @ProfileID";
 
