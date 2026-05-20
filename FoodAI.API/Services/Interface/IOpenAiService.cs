@@ -13,6 +13,10 @@ namespace FoodAI.API.Services
         // 부족한 영양소 정보를 받아서 배달 메뉴 추천 JSON을 반환하는 메서드
         Task<string> RecommendMenuAsync(double remainingCalories, double remainingProtein, double remainingCarbs, double remainingFat);
 
+
         Task<string> ChatAsync(ChatRequest request);
+
+        // 음식 이름으로 AI가 영양 정보를 추정해 반환하는 메서드
+        Task<string> GetFoodNutritionByNameAsync(string foodName);
     }
 }
