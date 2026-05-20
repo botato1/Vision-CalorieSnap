@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using FoodAI.API.Models;
+using System.ComponentModel.DataAnnotations;
 
 namespace FoodAI.API.DTOs.Requests
 {
@@ -29,11 +30,13 @@ namespace FoodAI.API.DTOs.Requests
         public double Weight { get; set; }
 
         /// <summary>생년월일 (선택)</summary>
-        public DateTime? BirthDate { get; set; }
+        public int Age { get; set; }
 
         /// <summary>목표 칼로리 (kcal/일)</summary>
         [Range(500, 5000, ErrorMessage = "목표 칼로리는 500~5000kcal 사이여야 합니다")]
         public double TargetCalories { get; set; } = 2000;
+
+        public JobType Job { get; set; } = JobType.Office;
     }
     public class LoginUserRequest
     {
@@ -58,6 +61,8 @@ namespace FoodAI.API.DTOs.Requests
 
         [Range(500, 5000)]
         public double TargetCalories { get; set; }
+
+        public JobType Job { get; set; } = JobType.Office;
     }
 }
     

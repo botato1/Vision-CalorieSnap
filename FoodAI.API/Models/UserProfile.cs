@@ -22,7 +22,7 @@
         public double Weight { get; set; }
 
         /// <summary>생일 (nullable — 사용자가 입력 안 할 수도 있음)</summary>
-        public DateTime? BirthDate { get; set; }
+        public int Age { get; set; }
 
         /// <summary>목표 칼로리 (kcal/일)</summary>
         public double TargetCalories { get; set; } = 2000;
@@ -30,20 +30,9 @@
         /// <summary>계정 생성 일시</summary>
         public DateTime CreatedAt { get; set; } = DateTime.Now;
 
-        // ── 계산 속성 (DB 컬럼 아님) ────────────────────────
-        /// <summary>만 나이 (BirthDate로부터 계산)</summary>
-        public int? Age
-        {
-            get
-            {
-                if (BirthDate is null) return null;
-                var today = DateTime.Today;
-                var age = today.Year - BirthDate.Value.Year;
-                if (BirthDate.Value.Date > today.AddYears(-age)) age--;
-                return age;
-            }
-        }
+        public JobType Job { get; set; } = JobType.Office;
 
+        // ── 계산 속성 (DB 컬럼 아님) ────────────────────────
         /// <summary>BMI (체질량지수)</summary>
         public double BMI
         {
@@ -56,5 +45,14 @@
         }
 
         public override string ToString() => $"{Name} ({(Male ? "남" : "여")}, {Height}cm/{Weight}kg)";
+    }
+    public enum JobType : byte
+    {
+        Office = 0,  // 사무직
+        Student = 1,  // 학생
+        Physical = 2,  // 육체 노동직
+        Service = 3,  // 서비스직
+        Freelance = 4,  // 재택/프리랜서
+        Athlete = 5,  // 운동선수/트레이너
     }
 }

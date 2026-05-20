@@ -1,4 +1,6 @@
-﻿namespace FoodAI.API.DTOs.Responses
+﻿using FoodAI.API.Models;
+
+namespace FoodAI.API.DTOs.Responses
 {
     public class AuthResponse
     {
@@ -13,6 +15,7 @@
         public string ProfileID { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
     }
+
     public class UserProfileResponse
     {
         public string ProfileID { get; set; } = string.Empty;
@@ -23,8 +26,8 @@
         public double Weight { get; set; }
         public double TargetCalories { get; set; }
 
-        public int? Age { get; set; }
-
+        public int Age { get; set; }
+        public JobType Job { get; set; } = JobType.Office;
         public double BMI { get; set; }
 
         public string BMIStatus { get; set; } = string.Empty;

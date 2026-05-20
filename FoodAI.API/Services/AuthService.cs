@@ -67,8 +67,8 @@ namespace FoodAI.API.Services
         {
 
             const string sql = @"
-                INSERT INTO UserProfile (ProfileID,ProfilePW, Name, Male, Height, Weight, BirthDate, TargetCalories)
-                VALUES (@ProfileID,@ProfilePW,@Name, @Male, @Height, @Weight, @BirthDate, @TargetCalories);
+                INSERT INTO UserProfile (ProfileID,ProfilePW, Name, Male, Height, Weight, Age, TargetCalories, Job)
+                VALUES (@ProfileID,@ProfilePW,@Name, @Male, @Height, @Weight, @Age, @TargetCalories, @Job);
                 ";
 
             using var conn = _db.CreateConnection();
@@ -81,7 +81,8 @@ namespace FoodAI.API.Services
             cmd.Parameters.AddWithValue("@Male", profile.Male);
             cmd.Parameters.AddWithValue("@Height", profile.Height);
             cmd.Parameters.AddWithValue("@Weight", profile.Weight);
-            cmd.Parameters.AddWithValue("@BirthDate", (object?)profile.BirthDate ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@Age", profile.Age);
+            cmd.Parameters.AddWithValue("@Job", profile.Job);
             cmd.Parameters.AddWithValue("@TargetCalories", profile.TargetCalories);
 
             await cmd.ExecuteNonQueryAsync();
@@ -102,7 +103,7 @@ namespace FoodAI.API.Services
         {
             const string sql = @"
                 SELECT ProfileID, Name, Male, Height, Weight,
-                       BirthDate, TargetCalories, CreatedAt
+                       Age, TargetCalories, CreatedAt, Job
                 FROM   UserProfile
                 WHERE  ProfileID = @ProfileID";
 
@@ -174,8 +175,9 @@ namespace FoodAI.API.Services
             Male = dto.Male,
             Height = dto.Height,
             Weight = dto.Weight,
-            BirthDate = dto.BirthDate,
-            TargetCalories = dto.TargetCalories
+            Age = dto.Age,
+            TargetCalories = dto.TargetCalories,
+            Job = dto.Job
         };
 
         /// <summary>수정 Request → 모델</summary>
@@ -184,7 +186,9 @@ namespace FoodAI.API.Services
             ProfileID = profileId,
             Height = dto.Height,
             Weight = dto.Weight,
-            TargetCalories = dto.TargetCalories
+            TargetCalories = dto.TargetCalories,
+            Job = dto.Job,
+           
         };
 
         /// <summary>모델 → 응답 DTO</summary>
@@ -198,7 +202,9 @@ namespace FoodAI.API.Services
             TargetCalories = model.TargetCalories,
             Age = model.Age,
             BMI = Math.Round(model.BMI, 1),
-            BMIStatus = GetBMIStatus(model.BMI)
+            BMIStatus = GetBMIStatus(model.BMI),
+            Job = model.Job,
+            
         };
         #endregion
 
@@ -210,11 +216,10 @@ namespace FoodAI.API.Services
             Male = reader.GetBoolean(reader.GetOrdinal("Male")),
             Height = reader.GetDouble(reader.GetOrdinal("Height")),
             Weight = reader.GetDouble(reader.GetOrdinal("Weight")),
-            BirthDate = reader.IsDBNull(reader.GetOrdinal("BirthDate"))
-                                ? null
-                                : reader.GetDateTime(reader.GetOrdinal("BirthDate")),
+            Age = reader.GetInt32(reader.GetOrdinal("Age")),
             TargetCalories = reader.GetDouble(reader.GetOrdinal("TargetCalories")),
-            CreatedAt = reader.GetDateTime(reader.GetOrdinal("CreatedAt"))
+            CreatedAt = reader.GetDateTime(reader.GetOrdinal("CreatedAt")),
+            Job = (JobType)reader.GetByte(reader.GetOrdinal("Job"))
         };
 
         private static string GetBMIStatus(double bmi) => bmi switch

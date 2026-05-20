@@ -22,9 +22,10 @@ CREATE TABLE dbo.UserProfile
     Male             BIT             NOT NULL,              -- 1: 남, 0: 여
     Height           FLOAT           NOT NULL,              -- cm
     Weight           FLOAT           NOT NULL,              -- kg
-    BirthDate        DATE            NULL,                  -- 생일 (Age 대신)
+    Age        INT                   NOT NULL,                  -- 생일 (Age 대신)
     TargetCalories   FLOAT           NOT NULL DEFAULT 2000, -- kcal/일
-    CreatedAt        DATETIME2       NOT NULL DEFAULT GETDATE()
+    CreatedAt        DATETIME2       NOT NULL DEFAULT GETDATE(),
+    Job             TINYINT         NOT NULL        DEFAULT 0
 );
 GO
 
@@ -109,8 +110,8 @@ GO
 -- ─────────────────────────────────────────────────────────────
 -- 5. 초기 데이터
 -- ─────────────────────────────────────────────────────────────
-INSERT INTO dbo.UserProfile (ProfileID, ProfilePW, Name, Male, Height, Weight, BirthDate, TargetCalories)
-VALUES ('test_user_01', '1234', N'기본 사용자', 1, 175, 70, '1995-01-01', 2000);
+INSERT INTO dbo.UserProfile (ProfileID, ProfilePW, Name, Male, Height, Weight, Age, TargetCalories,job)
+VALUES ('admin', '1234', N'기본 사용자', 1, 175, 70, 20, 2000,0);
 GO
 
 PRINT '✓ 스키마 생성 완료';
