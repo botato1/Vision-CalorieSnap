@@ -52,12 +52,19 @@ namespace FoodAI.API.DTOs.Requests
     }
     public class UpdateUserProfileRequest
     {
+        [Required, MaxLength(50)]
+        public string Name { get; set; } = string.Empty;
+
+        [Required]
+        public bool Male { get; set; }
 
         [Range(50, 250)]
         public double Height { get; set; }
 
         [Range(10, 300)]
         public double Weight { get; set; }
+
+        public int Age { get; set; }
 
         [Range(500, 5000)]
         public double TargetCalories { get; set; }

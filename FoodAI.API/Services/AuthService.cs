@@ -126,10 +126,13 @@ namespace FoodAI.API.Services
         {
             const string sql = @"
                 UPDATE UserProfile
-                SET    
+                SET
+                       Name           = @Name,
+                       Male           = @Male,
                        Height         = @Height,
                        Weight         = @Weight,
-                       TargetCalories = @TargetCalories
+                       Age            = @Age,
+                       TargetCalories = @TargetCalories,
                        Job            = @Job
                 WHERE  ProfileID = @ProfileID";
 
@@ -138,8 +141,11 @@ namespace FoodAI.API.Services
 
             using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@ProfileID", ProfileID);
+            cmd.Parameters.AddWithValue("@Name", profile.Name);
+            cmd.Parameters.AddWithValue("@Male", profile.Male);
             cmd.Parameters.AddWithValue("@Height", profile.Height);
             cmd.Parameters.AddWithValue("@Weight", profile.Weight);
+            cmd.Parameters.AddWithValue("@Age", profile.Age);
             cmd.Parameters.AddWithValue("@Job", profile.Job);
             cmd.Parameters.AddWithValue("@TargetCalories", profile.TargetCalories);
 
@@ -186,8 +192,11 @@ namespace FoodAI.API.Services
         public static UserProfile ToModel(UpdateUserProfileRequest dto, string profileId) => new()
         {
             ProfileID = profileId,
+            Name = dto.Name,
+            Male = dto.Male,
             Height = dto.Height,
             Weight = dto.Weight,
+            Age = dto.Age,
             TargetCalories = dto.TargetCalories,
             Job = dto.Job,
            
