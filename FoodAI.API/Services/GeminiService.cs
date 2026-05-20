@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using FoodAI.API.Models;
+using System.Text;
 using System.Text.Json;
 
 namespace FoodAI.API.Services
@@ -125,6 +126,107 @@ JSON만 답해줘, 다른 말 하지 말고. 코드블록도 쓰지 말고." }
             }
 
             return candidates[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString()!;
+        }
+
+        public async Task<string> ChatAsync(ChatRequest request)
+        {
+            var url =
+                $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
+
+            // 부족 영양소 계산
+            var remainCalories = request.TargetCalories - request.CurrentCalories;
+            var remainProtein = request.TargetProtein - request.CurrentProtein;
+            var remainCarbs = request.TargetCarbs - request.CurrentCarbs;
+            var remainFat = request.TargetFat - request.CurrentFat;
+
+            // AI 프롬프트
+            var prompt = $@"
+너는 먹깨비 앱의 AI 영양 코치다.
+
+반드시 아래 규칙을 지켜라.
+
+[답변 규칙]
+- 답변은 최대 5줄
+- 짧고 핵심만 설명
+- 이모지 적당히 사용
+- 긴 설명 금지
+- 마크다운(#, ###, ** 등) 사용 금지
+- 리스트는 최대 3개
+- 음식 추천은 간단하게
+- 모바일 채팅처럼 답변
+- 말투는 친근하게
+
+현재 사용자 상태:
+- 칼로리: {request.CurrentCalories}/{request.TargetCalories} kcal
+- 단백질: {request.CurrentProtein}/{request.TargetProtein} g
+- 탄수화물: {request.CurrentCarbs}/{request.TargetCarbs} g
+- 지방: {request.CurrentFat}/{request.TargetFat} g
+
+부족 영양소:
+- 칼로리 {remainCalories:F0} kcal
+- 단백질 {remainProtein:F0} g
+- 탄수화물 {remainCarbs:F0} g
+- 지방 {remainFat:F0} g
+
+사용자 질문:
+{request.Message}
+";
+
+            var requestBody = new
+            {
+                contents = new[]
+                {
+            new
+            {
+                parts = new object[]
+                {
+                    new { text = prompt }
+                }
+            }
+        }
+            };
+
+            var json = JsonSerializer.Serialize(requestBody);
+
+            var content = new StringContent(
+                json,
+                Encoding.UTF8,
+                "application/json"
+            );
+
+            var response = await _httpClient.PostAsync(url, content);
+
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            Console.WriteLine(responseBody);
+
+            var doc = JsonDocument.Parse(responseBody);
+
+            // 에러 처리
+            if (doc.RootElement.TryGetProperty("error", out var errorElement))
+            {
+                var errorMsg = errorElement.TryGetProperty("message", out var msg)
+                    ? msg.GetString()
+                    : "알 수 없는 오류";
+
+                Console.WriteLine($"[Gemini Chat Error] {errorMsg}");
+
+                return "지금 AI 서버가 많이 바빠요 😢 잠시 후 다시 시도해주세요.";
+            }
+
+            if (!doc.RootElement.TryGetProperty("candidates", out var candidates)
+                || candidates.GetArrayLength() == 0)
+            {
+                Console.WriteLine("[Gemini Chat Error] candidates 없음");
+
+                return "답변을 생성하지 못했어요 😢 다시 시도해주세요.";
+            }
+
+            return candidates[0]
+                .GetProperty("content")
+                .GetProperty("parts")[0]
+                .GetProperty("text")
+                .GetString()!;
         }
     }
 }

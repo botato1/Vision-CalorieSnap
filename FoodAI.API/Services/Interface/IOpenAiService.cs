@@ -1,4 +1,6 @@
-﻿namespace FoodAI.API.Services
+﻿using FoodAI.API.Models;
+
+namespace FoodAI.API.Services
 {
     // AI 이미지 분석 서비스의 인터페이스 (설계도)
 
@@ -10,5 +12,7 @@
 
         // 부족한 영양소 정보를 받아서 배달 메뉴 추천 JSON을 반환하는 메서드
         Task<string> RecommendMenuAsync(double remainingCalories, double remainingProtein, double remainingCarbs, double remainingFat);
+
+        Task<string> ChatAsync(ChatRequest request);
     }
 }
