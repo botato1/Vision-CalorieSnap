@@ -1,10 +1,11 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.Json;
 
 using FoodAI.API.DTOs.Responses;
 
 namespace FoodAI.API.Services;
 
+//여기 서칭
 public class FoodNutritionService
     : IFoodNutritionService
 {
