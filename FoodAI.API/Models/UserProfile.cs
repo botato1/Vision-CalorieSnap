@@ -4,7 +4,10 @@
     {
         // ── DB 컬럼 매핑 ─────────────────────────────────────
         /// <summary>사용자 고유 ID (자동 증가)</summary>
-        public int ProfileID { get; set; }
+        public string ProfileID { get; set; } = string.Empty;
+
+        /// <summary>사용자 고유 ID (자동 증가)</summary>
+        public string ProfilePW { get; set; } = string.Empty;
 
         /// <summary>사용자 이름</summary>
         public string Name { get; set; } = string.Empty;
