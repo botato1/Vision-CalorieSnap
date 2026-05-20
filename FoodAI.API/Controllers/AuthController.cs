@@ -47,4 +47,5 @@ namespace FoodAI.API.Controllers
         public string ProfileID { get; set; } = string.Empty;
         public string ProfilePW { get; set; } = string.Empty;
     }
+
 }
