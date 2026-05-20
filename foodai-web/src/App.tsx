@@ -6,6 +6,7 @@ const API_BASE = 'http://localhost:5260/api';
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
 type FoodItem = {
+  mealFoodId?: number;
   name: string;
   calories: number;
   carbs: number;
@@ -55,6 +56,8 @@ type ApiMealDetail = ApiMealRecord & {
 };
 
 type ApiMealFood = {
+  mealFoodID?: number;
+  MealFoodID?: number;
   foodName?: string;
   FoodName?: string;
   intakeAmount?: number;
@@ -69,6 +72,23 @@ type ApiMealFood = {
   Fat?: number;
   sodium?: number;
   Sodium?: number;
+};
+
+type ApiUserProfile = {
+  profileID?: string;
+  ProfileID?: string;
+  name?: string;
+  Name?: string;
+  male?: boolean;
+  Male?: boolean;
+  height?: number;
+  Height?: number;
+  weight?: number;
+  Weight?: number;
+  age?: number | null;
+  Age?: number | null;
+  targetCalories?: number;
+  TargetCalories?: number;
 };
 
 type AnalyzeFoodResult = FoodItem & {
@@ -122,6 +142,7 @@ const apiMealTypeToMealType = (value: number | string | undefined): MealType | n
 };
 
 const normalizeMealFood = (food: ApiMealFood): FoodItem => ({
+  mealFoodId: Number(food.mealFoodID ?? food.MealFoodID) || undefined,
   name: food.foodName ?? food.FoodName ?? '',
   grams: Math.round(Number(food.intakeAmount ?? food.IntakeAmount ?? 0)),
   calories: Math.round(Number(food.calories ?? food.Calories ?? 0)),
@@ -151,6 +172,21 @@ const parseAnalyzeResult = (result: string): AnalyzeFoodResult | null => {
   } catch {
     return null;
   }
+};
+
+const normalizeUserProfile = (profile: ApiUserProfile): Partial<UserInfo> => {
+  const age = profile.age ?? profile.Age;
+  const height = profile.height ?? profile.Height;
+  const weight = profile.weight ?? profile.Weight;
+  const male = profile.male ?? profile.Male;
+
+  return {
+    name: String(profile.name ?? profile.Name ?? ''),
+    gender: male === false ? 'female' : 'male',
+    age: age ? String(age) : '',
+    height: height ? String(height) : '',
+    weight: weight ? String(weight) : '',
+  };
 };
 
 const RECOMMEND_MENU_DB = [
@@ -320,10 +356,19 @@ export default function Home() {
       const data = await response.json();
       const nextProfileId = String(data.profileId ?? data.ProfileID ?? loginId);
       const nextName = String(data.name ?? data.Name ?? '');
+      const profileResponse = await fetch(`${API_BASE}/auth/${encodeURIComponent(nextProfileId)}`);
+      const profile = profileResponse.ok ? await profileResponse.json() as ApiUserProfile : null;
+      const normalizedProfile = profile ? normalizeUserProfile(profile) : {};
 
       setProfileId(nextProfileId);
-      setUserInfo(prev => ({ ...prev, name: nextName || prev.name }));
+      setUserInfo(prev => ({
+        ...prev,
+        ...normalizedProfile,
+        name: normalizedProfile.name || nextName || prev.name,
+        job: prev.job || 'office',
+      }));
       setIsLoggedIn(true);
+      setIsInitialSetupDone(Boolean((normalizedProfile.height || userInfo.height) && (normalizedProfile.weight || userInfo.weight)));
       closeLoginModal();
     } catch (error) {
       setLoginError(error instanceof TypeError ? 'API 서버에 연결할 수 없습니다. 서버가 http://localhost:5260 에서 실행 중인지 확인해주세요.' : error instanceof Error ? error.message : '로그인 중 문제가 발생했습니다.');
@@ -339,9 +384,9 @@ export default function Home() {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            height: Number(userInfo.height),
-            weight: Number(userInfo.weight),
-            targetCalories: TARGET_CALORIES,
+            Height: Number(userInfo.height),
+            Weight: Number(userInfo.weight),
+            TargetCalories: TARGET_CALORIES,
           }),
         });
 
@@ -364,9 +409,9 @@ export default function Home() {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            height: Number(userInfo.height),
-            weight: Number(userInfo.weight),
-            targetCalories: TARGET_CALORIES,
+            Height: Number(userInfo.height),
+            Weight: Number(userInfo.weight),
+            TargetCalories: TARGET_CALORIES,
           }),
         });
 
@@ -409,6 +454,7 @@ export default function Home() {
     };
 
     let mealId = meals[targetMealType].mealId;
+    let mealFoodId: number | undefined;
 
     try {
       if (profileId) {
@@ -417,9 +463,9 @@ export default function Home() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              profileID: profileId,
-              mealType: mealTypeToApi[targetMealType],
-              mealDate: selectedDate,
+              ProfileID: profileId,
+              MealType: mealTypeToApi[targetMealType],
+              MealDate: selectedDate,
             }),
           });
 
@@ -435,21 +481,24 @@ export default function Home() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            mealID: mealId,
-            foodName: finalFood.name,
-            intakeAmount: finalFood.grams,
-            calories: finalFood.calories,
-            protein: finalFood.protein,
-            carbohydrate: finalFood.carbs,
-            fat: finalFood.fat,
-            sodium: finalFood.sodium,
-            sugar: 0,
+            MealID: mealId,
+            FoodName: finalFood.name,
+            IntakeAmount: finalFood.grams,
+            Calories: finalFood.calories,
+            Protein: finalFood.protein,
+            Carbohydrate: finalFood.carbs,
+            Fat: finalFood.fat,
+            Sodium: finalFood.sodium,
+            Sugar: 0,
           }),
         });
 
         if (!addFoodResponse.ok) {
           throw new Error('음식 추가에 실패했습니다.');
         }
+
+        const addFoodData = await addFoodResponse.json();
+        mealFoodId = Number(addFoodData.mealFoodId ?? addFoodData.MealFoodID) || undefined;
       }
     } catch (error) {
       alert(error instanceof Error ? error.message : '음식 추가 중 문제가 발생했습니다.');
@@ -461,14 +510,31 @@ export default function Home() {
       [targetMealType]: { 
         ...prev[targetMealType],
         mealId,
-        items: [...prev[targetMealType].items, finalFood] 
+        items: [...prev[targetMealType].items, { ...finalFood, mealFoodId }] 
       } 
     }));
     closeSearch();
     setTimeout(() => openMealModal(targetMealType), 80);
   };
 
-  const handleRemoveFood = (type: MealType, idx: number) => {
+  const handleRemoveFood = async (type: MealType, idx: number) => {
+    const targetFood = meals[type].items[idx];
+
+    if (targetFood?.mealFoodId) {
+      try {
+        const response = await fetch(`${API_BASE}/meals/food/${targetFood.mealFoodId}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          throw new Error('음식 삭제에 실패했습니다.');
+        }
+      } catch (error) {
+        alert(error instanceof Error ? error.message : '음식 삭제 중 문제가 발생했습니다.');
+        return;
+      }
+    }
+
     setMeals(prev => ({ ...prev, [type]: { ...prev[type], items: prev[type].items.filter((_, i) => i !== idx) } }));
   };
 
@@ -496,7 +562,7 @@ export default function Home() {
         const response = await fetch(`${API_BASE}/meals/search-food`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ foodName: query }),
+          body: JSON.stringify({ FoodName: query }),
           signal: controller.signal,
         });
 
@@ -568,6 +634,7 @@ export default function Home() {
 
     const targetMealType = photoMealType;
     let mealId = meals[targetMealType].mealId;
+    let mealFoodId: number | undefined;
 
     try {
       if (profileId) {
@@ -576,9 +643,9 @@ export default function Home() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              profileID: profileId,
-              mealType: mealTypeToApi[targetMealType],
-              mealDate: selectedDate,
+              ProfileID: profileId,
+              MealType: mealTypeToApi[targetMealType],
+              MealDate: selectedDate,
             }),
           });
 
@@ -594,28 +661,31 @@ export default function Home() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            mealID: mealId,
-            foodName: analyzedFood.name,
-            intakeAmount: analyzedFood.grams ?? 100,
-            calories: analyzedFood.calories,
-            protein: analyzedFood.protein,
-            carbohydrate: analyzedFood.carbs,
-            fat: analyzedFood.fat,
-            sodium: analyzedFood.sodium ?? 0,
-            sugar: 0,
+            MealID: mealId,
+            FoodName: analyzedFood.name,
+            IntakeAmount: analyzedFood.grams ?? 100,
+            Calories: analyzedFood.calories,
+            Protein: analyzedFood.protein,
+            Carbohydrate: analyzedFood.carbs,
+            Fat: analyzedFood.fat,
+            Sodium: analyzedFood.sodium ?? 0,
+            Sugar: 0,
           }),
         });
 
         if (!addFoodResponse.ok) {
           throw new Error('분석 음식 등록에 실패했습니다.');
         }
+
+        const addFoodData = await addFoodResponse.json();
+        mealFoodId = Number(addFoodData.mealFoodId ?? addFoodData.MealFoodID) || undefined;
       }
     } catch (error) {
       alert(error instanceof Error ? error.message : '분석 음식 등록 중 문제가 발생했습니다.');
       return;
     }
 
-    setMeals(prev => ({ ...prev, [targetMealType]: { ...prev[targetMealType], mealId, imgUrl: modalPhotoUrl, items: [...prev[targetMealType].items, analyzedFood] } }));
+    setMeals(prev => ({ ...prev, [targetMealType]: { ...prev[targetMealType], mealId, imgUrl: modalPhotoUrl, items: [...prev[targetMealType].items, { ...analyzedFood, mealFoodId }] } }));
     closePhoto();
     setTimeout(() => openMealModal(targetMealType), 80);
   };

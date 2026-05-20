@@ -64,7 +64,7 @@ public class MealService : IMealService
     // ─────────────────────────────────────────────
     // 음식 추가
     // ─────────────────────────────────────────────
-    public async Task AddFoodAsync(
+    public async Task<int> AddFoodAsync(
         AddMealFoodRequest request
     )
     {
@@ -93,6 +93,29 @@ public class MealService : IMealService
             @Sodium,
             @Sugar
         );
+
+        SELECT CAST(SCOPE_IDENTITY() as int);
+        """;
+
+        using var conn =
+            _db.CreateConnection();
+
+        return await conn.ExecuteScalarAsync<int>(
+            sql,
+            request
+        );
+    }
+
+    // ─────────────────────────────────────────────
+    // 개별 음식 삭제
+    // ─────────────────────────────────────────────
+    public async Task DeleteFoodAsync(
+        int mealFoodId
+    )
+    {
+        const string sql = """
+        DELETE FROM MealFoods
+        WHERE MealFoodID = @MealFoodID
         """;
 
         using var conn =
@@ -100,8 +123,10 @@ public class MealService : IMealService
 
         await conn.ExecuteAsync(
             sql,
-            request
-        );
+            new
+            {
+                MealFoodID = mealFoodId
+            });
     }
 
     // ─────────────────────────────────────────────

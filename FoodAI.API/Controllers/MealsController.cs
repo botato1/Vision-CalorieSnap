@@ -132,8 +132,32 @@ public class MealsController : ControllerBase
             AddMealFoodRequest request
         )
     {
-        await _mealService
+        var mealFoodId =
+            await _mealService
             .AddFoodAsync(request);
+
+        return Ok(new
+        {
+            success = true,
+            mealFoodId
+        });
+    }
+
+    // ─────────────────────────────────────────────
+    // 개별 음식 삭제
+    // DELETE /api/meals/food/1
+    // ─────────────────────────────────────────────
+
+    [HttpDelete("food/{mealFoodId}")]
+    public async Task<IActionResult>
+        DeleteFood(
+            int mealFoodId
+        )
+    {
+        await _mealService
+            .DeleteFoodAsync(
+                mealFoodId
+            );
 
         return Ok(new
         {

@@ -56,19 +56,7 @@ namespace FoodAI.API.Controllers
             });
         }
 
-        /*// GET /api/auth/check/{profileId}
-        [HttpGet("check/{profileId}")]
-        public async Task<IActionResult> CheckIdAvailable(string profileId)
-        {
-            var exists = await _authService.ExistsAsync(profileId);
-
-            return Ok(new
-            {
-                profileId,
-                available = !exists,
-                message = exists ? "이미 사용 중인 ID입니다." : "사용 가능한 ID입니다."
-            });
-        }*/
+   
 
 
 
