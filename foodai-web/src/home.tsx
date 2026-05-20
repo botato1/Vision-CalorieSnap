@@ -387,7 +387,7 @@ export default function Home() {
   const openSearch = (type) => { setSearchMealType(type); setSearchQuery(''); setSearchResults([]); setIsSearchOpen(true); setSelectedFoodForDetail(null); };
   const closeSearch = () => { setIsSearchOpen(false); setSearchMealType(null); setSelectedFoodForDetail(null); setSearchResults([]); };
 
-  // 음식 이름으로 공공 API를 호출해 검색 결과를 가져오는 함수
+  // 음식 이름으로 검색: 공공 API + AI 병렬 호출, AI 결과 항상 최상단 표시
   const handleSearchFood = async (query: string) => {
     if (!query.trim()) { setSearchResults([]); return; }
     const trimmed = query.trim();
@@ -397,17 +397,39 @@ export default function Home() {
     }
     setIsSearchLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/meals/search-food`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ FoodName: trimmed }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const foods = Array.isArray(data) ? data.map(normalizeFoodSearch).filter((food) => food.name) : [];
-        searchCacheRef.current[trimmed] = foods;
-        setSearchResults(foods);
+      // 공공 API + AI 동시 병렬 호출
+      const [apiResult, aiResult] = await Promise.allSettled([
+        fetch(`${API_BASE}/meals/search-food`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ FoodName: trimmed }),
+        }),
+        fetch(`${API_BASE}/meals/ai-search-food`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ FoodName: trimmed }),
+        }),
+      ]);
+
+      let apiFoods: any[] = [];
+      let aiFoods: any[] = [];
+
+      if (apiResult.status === 'fulfilled' && apiResult.value.ok) {
+        const data = await apiResult.value.json();
+        apiFoods = Array.isArray(data) ? data.map(normalizeFoodSearch).filter((f) => f.name) : [];
       }
+      if (aiResult.status === 'fulfilled' && aiResult.value.ok) {
+        const data = await aiResult.value.json();
+        aiFoods = Array.isArray(data) ? data.map((f) => ({ ...normalizeFoodSearch(f), isAi: true })).filter((f) => f.name) : [];
+      }
+
+      // AI 결과 최상단 배치 + 공공 API 결과에서 AI와 중복 이름 제거
+      const aiNames = new Set(aiFoods.map((f) => (f.rawName || f.name).toLowerCase()));
+      const uniqueApi = apiFoods.filter((f) => !aiNames.has((f.rawName || f.name).toLowerCase()));
+      const merged = [...aiFoods, ...uniqueApi];
+
+      searchCacheRef.current[trimmed] = merged;
+      setSearchResults(merged);
     } finally {
       setIsSearchLoading(false);
     }
@@ -645,67 +667,100 @@ export default function Home() {
 
   // 실제 mealsByDate 데이터와 TARGET_CALORIES 목표선으로 그래프 데이터 생성
   const getGraphData = (period: string) => {
+    const DAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
     switch (period) {
       case 'daily': {
-        // 각 끼니 개별 칼로리 (누적 아님)
         const b = meals.breakfast.items.reduce((a, c) => a + c.calories, 0);
         const l = meals.lunch.items.reduce((a, c) => a + c.calories, 0);
         const d = meals.dinner.items.reduce((a, c) => a + c.calories, 0);
         const s = meals.snack.items.reduce((a, c) => a + c.calories, 0);
         return {
-          labels: ['아침', '점심', '저녁', '간식'],
-          intake: [b, l, d, s],
-          target: Array(4).fill(TARGET_CALORIES / 4),
+          labels:    ['아침', '점심', '저녁', '간식'],
+          sublabels: null as string[] | null,
+          intake:    [b, l, d, s],
+          target:    Array(4).fill(TARGET_CALORIES / 4), // 일간: 끼니당 권장선
         };
       }
       case 'weekly': {
-        // 월~일 고정 순서로 최근 7일 날짜별 실제 칼로리
-        const dayNames = ['월', '화', '수', '목', '금', '토', '일'];
-        const labels = Array.from({ length: 7 }, (_, i) => {
+        const items = Array.from({ length: 7 }, (_, i) => {
           const d = new Date(selectedDate);
           d.setDate(d.getDate() - 6 + i);
-          const day = d.getDay();
-          return dayNames[day === 0 ? 6 : day - 1];
-        });
-        const intake = Array.from({ length: 7 }, (_, i) => getDayCalories(getDateStr(-6 + i)));
-        return { labels, intake, target: Array(7).fill(TARGET_CALORIES) };
-      }
-      case 'monthly': {
-        // 주별 평균 일일 칼로리 (목표선과 단위 맞춤)
-        const intake = Array.from({ length: 4 }, (_, w) => {
-          const weekTotal = Array.from({ length: 7 }, (_, d) => getDayCalories(getDateStr(-27 + w * 7 + d)))
-            .reduce((a, b) => a + b, 0);
-          return Math.round(weekTotal / 7);
+          return {
+            label:    DAY_KO[d.getDay()],
+            sublabel: `${d.getMonth() + 1}/${d.getDate()}`,
+            dateStr:  d.toISOString().split('T')[0],
+          };
         });
         return {
-          labels: ['1주차', '2주차', '3주차', '4주차'],
-          intake,
-          target: Array(4).fill(TARGET_CALORIES),
+          labels:    items.map(x => x.label),
+          sublabels: items.map(x => x.sublabel),
+          intake:    items.map(x => getDayCalories(x.dateStr)),
+          target:    Array(7).fill(TARGET_CALORIES), // 주간: 일일 권장선
+        };
+      }
+      case 'monthly': {
+        // 식사 데이터가 있는 날만 평균 — 비어있는 날은 제외
+        const items = Array.from({ length: 4 }, (_, w) => {
+          const start = new Date(selectedDate);
+          start.setDate(start.getDate() - 27 + w * 7);
+          const end = new Date(selectedDate);
+          end.setDate(end.getDate() - 27 + w * 7 + 6);
+          const dayCals = Array.from({ length: 7 }, (_, d) =>
+            getDayCalories(getDateStr(-27 + w * 7 + d))
+          );
+          const activeDays = dayCals.filter(c => c > 0);
+          return {
+            label:    `${w + 1}주차`,
+            sublabel: `${start.getMonth()+1}/${start.getDate()}~${end.getMonth()+1}/${end.getDate()}`,
+            intake:   activeDays.length > 0
+              ? Math.round(activeDays.reduce((a, b) => a + b, 0) / activeDays.length)
+              : 0,
+          };
+        });
+        return {
+          labels:    items.map(x => x.label),
+          sublabels: items.map(x => x.sublabel),
+          intake:    items.map(x => x.intake),
+          target:    Array(4).fill(TARGET_CALORIES), // 월간: 일일 권장선
         };
       }
       case 'yearly': {
-        // 분기별 평균 일일 칼로리 (목표선과 단위 맞춤)
-        const intake = Array.from({ length: 4 }, (_, q) => {
-          const qTotal = Array.from({ length: 91 }, (_, d) => getDayCalories(getDateStr(-364 + q * 91 + d)))
-            .reduce((a, b) => a + b, 0);
-          return Math.round(qTotal / 91);
+        // 식사 데이터가 있는 날만 평균 — 비어있는 날은 제외
+        // 오프셋 범위: -363 ~ 0 (오늘 포함 364일)
+        // q=0: -363~-273  q=1: -272~-182  q=2: -181~-91  q=3: -90~0(오늘)
+        const Q_MONTHS = ['1~3월', '4~6월', '7~9월', '10~12월'];
+        const items = Array.from({ length: 4 }, (_, q) => {
+          const dayCals = Array.from({ length: 91 }, (_, d) =>
+            getDayCalories(getDateStr(-363 + q * 91 + d))
+          );
+          const activeDays = dayCals.filter(c => c > 0);
+          return {
+            label:    `${q + 1}분기`,
+            sublabel: Q_MONTHS[q],
+            intake:   activeDays.length > 0
+              ? Math.round(activeDays.reduce((a, b) => a + b, 0) / activeDays.length)
+              : 0,
+          };
         });
         return {
-          labels: ['1분기', '2분기', '3분기', '4분기'],
-          intake,
-          target: Array(4).fill(TARGET_CALORIES),
+          labels:    items.map(x => x.label),
+          sublabels: items.map(x => x.sublabel),
+          intake:    items.map(x => x.intake),
+          target:    Array(4).fill(TARGET_CALORIES), // 년간: 일일 권장선
         };
       }
       default:
-        return { labels: [], intake: [], target: [] };
+        return { labels: [], sublabels: null as string[] | null, intake: [], target: [] };
     }
   };
 
   const graphData = getGraphData(graphPeriod);
-  // NaN/Infinity 방지: 모든 intake 값을 안전한 숫자로 정규화
   const safeIntake = graphData.intake.map(v => (isNaN(v) || !isFinite(v)) ? 0 : v);
-  // 그래프 Y축 최대값: 목표 칼로리의 1.5배 또는 실제 섭취 최대값 중 큰 값 (최소 1 보장)
-  const maxCal = Math.max(TARGET_CALORIES * 1.5, ...safeIntake, 1);
+  // 일간: 끼니당 칼로리 기준 → 1500 고정 (권장선 TARGET/4가 약 33~42% 위치로 가독성 확보)
+  // 주간/월간/년간: 하루 전체 칼로리 기준 → 3500 고정
+  const maxCal = graphPeriod === 'daily' ? 1500 : 3500;
+  // 권장선 기준값: 일간=끼니당(TARGET/4), 나머지=하루 전체 TARGET
+  const periodTargetUnit = graphPeriod === 'daily' ? TARGET_CALORIES / 4 : TARGET_CALORIES;
   const graphWidth = 420;
   const graphHeight = 130;
   const startX = 50;
@@ -713,8 +768,17 @@ export default function Home() {
 
   // 라벨 2개 미만이면 빈 배열 (division by zero → NaN 좌표 방지)
   const _n = graphData.labels.length;
-  const points = _n < 2 ? [] : safeIntake.map((val, i) => ({ x: startX + (i / (_n - 1)) * graphWidth, y: endY - (val / maxCal) * graphHeight, val, label: graphData.labels[i] }));
-  const targetPoints = _n < 2 ? [] : graphData.target.map((val, i) => ({ x: startX + (i / (_n - 1)) * graphWidth, y: endY - ((isNaN(val) ? 0 : val) / maxCal) * graphHeight }));
+  // y 좌표는 maxCal(3500)로 clamp → 초과 값이 그래프 밖으로 뚫고 나가지 않음
+  // 실제 값(val)은 그대로 유지하여 라벨에 정확한 수치 표시
+  const topY = endY - graphHeight; // 그래프 최상단 y좌표 (= 3500 위치)
+  const points = _n < 2 ? [] : safeIntake.map((val, i) => ({
+    x: startX + (i / (_n - 1)) * graphWidth,
+    y: Math.max(topY, endY - (val / maxCal) * graphHeight), // 3500 이상이면 topY에 고정
+    val,
+    label: graphData.labels[i],
+    sublabel: graphData.sublabels?.[i] ?? null,
+  }));
+  const targetPoints = _n < 2 ? [] : graphData.target.map((val, i) => ({ x: startX + (i / (_n - 1)) * graphWidth, y: endY - (Math.min(isNaN(val) ? 0 : val, maxCal) / maxCal) * graphHeight }));
 
   const intakeLinePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
   const intakeAreaPath = points.length > 0 ? `${intakeLinePath} L ${points[points.length - 1].x} ${endY} L ${points[0].x} ${endY} Z` : '';
@@ -809,13 +873,32 @@ export default function Home() {
   const selectedJob = JOB_OPTIONS.find(j => String(j.value) === String(userInfo.job));
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
-      <header className="bg-white border-b border-slate-100 sticky top-0 z-40">
+      <header className="sticky top-0 z-40 bg-gradient-to-r from-orange-500 to-red-500 shadow-lg shadow-orange-500/25">
         <div className="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
-          <div className="flex items-center gap-2"><span className="text-2xl">👹</span><h1 className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">먹깨비</h1></div>
-          <div className="flex items-center gap-3 border-l pl-4 border-slate-200">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-slate-700 to-slate-900 flex items-center justify-center text-white font-bold shadow-sm text-sm">{userInfo.name ? userInfo.name.charAt(0) : '먹'}</div>
-            <span className="text-sm font-semibold text-slate-600 hidden sm:inline">{userInfo.name ? `${userInfo.name} 님` : '사용자 님'}</span>
-            <button onClick={handleLogout} className="ml-2 text-xs font-bold text-slate-400 hover:text-red-500 underline underline-offset-2">로그아웃</button>
+          {/* 로고 */}
+          <div className="flex items-center gap-3">
+            <span className="text-3xl drop-shadow-sm select-none">👹</span>
+            <div className="leading-tight">
+              <h1 className="text-xl font-black text-white tracking-tight">먹깨비</h1>
+              <p className="text-[10px] font-semibold text-orange-100 leading-none hidden sm:block">AI 배달음식 영양 관리</p>
+            </div>
+          </div>
+          {/* 유저 정보 + 로그아웃 */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 bg-white/15 hover:bg-white/20 transition-colors rounded-full px-3 py-1.5 border border-white/25 backdrop-blur-sm">
+              <div className="w-7 h-7 rounded-full bg-white/25 border-2 border-white/50 flex items-center justify-center text-white font-black text-sm shadow-inner">
+                {userInfo.name ? userInfo.name.charAt(0) : '먹'}
+              </div>
+              <span className="text-sm font-bold text-white hidden sm:inline">
+                {userInfo.name ? `${userInfo.name} 님` : '사용자 님'}
+              </span>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="text-xs font-bold text-white/90 hover:text-white bg-white/10 hover:bg-white/25 active:bg-white/30 px-3 py-1.5 rounded-full border border-white/25 transition-all duration-150"
+            >
+              로그아웃
+            </button>
           </div>
         </div>
       </header>
@@ -981,35 +1064,71 @@ export default function Home() {
                       SVG 내부 요소는 className 대신 SVG 속성 직접 사용 (CSS transition 제거)
                       → React의 removeChild DOM 충돌 완전 차단
                     */}
-                    <svg key={`${graphPeriod}-${safeIntake.join(',')}`} viewBox="0 0 500 180" className="w-full h-auto overflow-visible">
+                    <svg key={`${graphPeriod}-${safeIntake.join(',')}`} viewBox="0 0 500 200" className="w-full h-auto overflow-visible">
                       <defs>
                         <linearGradient id="intakeAreaGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#f97316" stopOpacity="0.25" />
                           <stop offset="100%" stopColor="#f97316" stopOpacity="0.00" />
                         </linearGradient>
                       </defs>
-                      {/* Y축 그리드 + 레이블: SVG 속성만 사용, className 제거 */}
-                      {[0, 0.33, 0.66, 1].map((ratio, i) => {
-                        const val = Math.round(maxCal * ratio);
-                        const y = endY - ratio * graphHeight;
+
+                      {/* Y축 그리드 — 3칸 고정 눈금 (maxCal 기준 3등분) */}
+                      {Array.from({ length: 4 }, (_, i) => Math.round(maxCal * i / 3)).map((val) => {
+                        const y = endY - (val / maxCal) * graphHeight;
+                        const isTarget = val === Math.round(periodTargetUnit);
                         return (
-                          <g key={`y${i}`}>
-                            <line x1="50" y1={y} x2="480" y2={y} stroke="#cbd5e1" strokeWidth="1" strokeDasharray={ratio === 0.66 ? "0" : "3 3"} opacity="0.5" />
-                            <text x="42" y={y + 3} textAnchor="end" fill="#94a3b8" fontSize="10" fontWeight="bold" opacity="0.7">{val}</text>
+                          <g key={`y-${val}`}>
+                            <line x1="50" y1={y} x2="480" y2={y}
+                              stroke={isTarget ? "#f43f5e" : "#cbd5e1"}
+                              strokeWidth="1"
+                              strokeDasharray={isTarget ? "0" : "3 3"}
+                              opacity={isTarget ? "0.6" : "0.5"} />
+                            <text x="42" y={y + 3} textAnchor="end"
+                              fill={isTarget ? "#f43f5e" : "#94a3b8"}
+                              fontSize="9" fontWeight="bold">{val}</text>
                           </g>
                         );
                       })}
+
+                      {/* 일간 모드: 그래프 우상단에 날짜 표시 */}
+                      {graphPeriod === 'daily' && (() => {
+                        const [yr, mo, dy] = selectedDate.split('-').map(Number);
+                        const dow = new Date(selectedDate).getDay();
+                        const DOW = ['일','월','화','수','목','금','토'];
+                        return (
+                          <text x="478" y="22" textAnchor="end"
+                            fill="#64748b" fontSize="11" fontWeight="bold">
+                            {`${yr}년 ${mo}월 ${dy}일 (${DOW[dow]})`}
+                          </text>
+                        );
+                      })()}
+
                       {intakeAreaPath && <path d={intakeAreaPath} fill="url(#intakeAreaGrad)" />}
-                      {targetLinePath && <path d={targetLinePath} fill="none" stroke="#f43f5e" strokeWidth="1.5" strokeDasharray="5 4" />}
+                      {targetLinePath && <path d={targetLinePath} fill="none" stroke="#f43f5e" strokeWidth="2" strokeDasharray="6 4" />}
                       {intakeLinePath && <path d={intakeLinePath} fill="none" stroke="#f97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />}
-                      {/* 포인트: CSS transition/hover 완전 제거, SVG 속성만 사용 */}
+
+                      {/* 권장선 끝 라벨 */}
+                      {targetPoints.length > 0 && (() => {
+                        const ty = targetPoints[0].y;
+                        return (
+                          <g>
+                            <rect x="482" y={ty - 8} width="18" height="13" rx="3" fill="#fff1f2" />
+                            <text x="491" y={ty + 2} textAnchor="middle" fill="#f43f5e" fontSize="8" fontWeight="bold">권장</text>
+                          </g>
+                        );
+                      })()}
+
+                      {/* 데이터 포인트 + X축 라벨 + 날짜 서브라벨 */}
                       {points.map((p) => (
-                        <g key={`pt-${p.label}`}>
+                        <g key={`pt-${p.label}-${p.x}`}>
                           <circle cx={p.x} cy={p.y} r="4.5" fill="white" stroke="#f97316" strokeWidth="2.5" />
                           {p.val > 0 && (
-                            <text x={p.x} y={p.y - 9} textAnchor="middle" fill="#ea580c" fontSize="10" fontWeight="bold">{p.val} kcal</text>
+                            <text x={p.x} y={p.y - 9} textAnchor="middle" fill="#ea580c" fontSize="10" fontWeight="bold">{p.val}</text>
                           )}
-                          <text x={p.x} y="168" textAnchor="middle" fill="#94a3b8" fontSize="11" fontWeight="bold">{p.label}</text>
+                          <text x={p.x} y="168" textAnchor="middle" fill="#475569" fontSize="11" fontWeight="bold">{p.label}</text>
+                          {p.sublabel && (
+                            <text x={p.x} y="183" textAnchor="middle" fill="#94a3b8" fontSize="9">{p.sublabel}</text>
+                          )}
                         </g>
                       ))}
                     </svg>
@@ -1272,9 +1391,16 @@ export default function Home() {
                       <div key={idx} className="flex items-center px-4 py-3 rounded-xl border border-slate-100 hover:border-orange-200 hover:bg-orange-50/50 transition-all">
                         {/* 음식 정보 클릭 → 용량 선택 */}
                         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleSelectFoodItem(foodObj)}>
-                          {food.makerName && <span className="text-[10px] font-bold text-slate-400">{food.makerName} · </span>}
-                          <span className="text-sm font-bold text-slate-700">{food.rawName || food.name}</span>
-                          <span className="text-sm font-black text-orange-500 ml-2">{Math.round(food.calories)} kcal</span>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {food.isAi && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-violet-100 text-violet-600 text-[9px] font-black tracking-wide">
+                                ✦ AI추정
+                              </span>
+                            )}
+                            {food.makerName && !food.isAi && <span className="text-[10px] font-bold text-slate-400">{food.makerName} · </span>}
+                            <span className="text-sm font-bold text-slate-700">{food.rawName || food.name}</span>
+                            <span className="text-sm font-black text-orange-500">{Math.round(food.calories)} kcal</span>
+                          </div>
                         </div>
                         {/* 즐겨찾기 토글 버튼 */}
                         <button onClick={() => toggleFavorite(foodObj)} className={`ml-2 flex-shrink-0 transition-all ${isFavorite(foodObj.name) ? 'text-amber-400' : 'text-slate-300 hover:text-amber-300'}`} title={isFavorite(foodObj.name) ? '즐겨찾기 해제' : '즐겨찾기 추가'}>

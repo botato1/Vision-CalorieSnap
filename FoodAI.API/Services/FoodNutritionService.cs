@@ -54,17 +54,7 @@ public class FoodNutritionService
             return cached.Results;
         }
 
-        var fallbackMatches =
-            FallbackFoods
-                .Where(food => food.FoodName.Contains(foodName, StringComparison.OrdinalIgnoreCase))
-                .Take(20)
-                .ToList();
-
-        if (fallbackMatches.Count > 0)
-        {
-            SearchCache[foodName] = (DateTime.UtcNow, fallbackMatches);
-            return fallbackMatches;
-        }
+        // ※ Fallback을 API 이전에 반환하지 않음 → 실제 API를 항상 먼저 시도
 
         var serviceKey =
             _config["FoodApi:ServiceKey"];
@@ -103,80 +93,72 @@ public class FoodNutritionService
 
         if (!doc.RootElement.TryGetProperty("body", out var body) ||
             !body.TryGetProperty("items", out var items))
-            return new List<FoodSearchResponse>();
+            return FallbackSearch(foodName);
 
-        var results =
-            new List<FoodSearchResponse>();
+        // ── Bug Fix 1: items가 빈 문자열("")일 때 EnumerateArray()가 예외를 throw함 ──
+        // 결과 없음 → 빈 배열이 아닌 "" 반환하는 공공 API 특성 대응
+        if (items.ValueKind != JsonValueKind.Array)
+            return FallbackSearch(foodName);
+
+        var results = new List<FoodSearchResponse>();
 
         foreach (var item in items.EnumerateArray())
         {
-            results.Add(
-                new FoodSearchResponse
-                {
-                    FoodName =
-                        item.GetProperty("FOOD_NM_KR")
-                            .GetString() ?? "",
+            results.Add(new FoodSearchResponse
+            {
+                FoodName =
+                    item.GetProperty("FOOD_NM_KR").GetString() ?? "",
 
-                    Calories =
-                        ParseDouble(item, "AMT_NUM1"),
+                Calories     = ParseDouble(item, "AMT_NUM1"),  // 에너지(kcal)
+                Protein      = ParseDouble(item, "AMT_NUM3"),  // 단백질(g)
+                Fat          = ParseDouble(item, "AMT_NUM4"),  // 지방(g)
+                Carbohydrate = ParseDouble(item, "AMT_NUM6"),  // 탄수화물(g)
+                Sodium       = ParseDouble(item, "AMT_NUM14"), // 나트륨(mg)
+                Sugar        = ParseDouble(item, "AMT_NUM7"),  // 당류(g)
 
-                    Protein =
-                        ParseDouble(item, "AMT_NUM3"),
-
-                    Fat =
-                        ParseDouble(item, "AMT_NUM4"),
-
-                    Carbohydrate =
-                        ParseDouble(item, "AMT_NUM7"),
-
-                    Sodium =
-                        ParseDouble(item, "AMT_NUM14"),
-
-                    Sugar =
-                        ParseDouble(item, "AMT_NUM8"),
-
-                    MakerName =
-                        item.TryGetProperty("MAKER_NM", out var maker)
-                            ? maker.GetString() ?? ""
-                            : ""
-                });
+                MakerName =
+                    item.TryGetProperty("MAKER_NM", out var maker)
+                        ? maker.GetString() ?? ""
+                        : ""
+            });
         }
 
-        var filtered =
-            results
-                .Where(food =>
-                    food.FoodName.Contains(foodName, StringComparison.OrdinalIgnoreCase) ||
-                    food.MakerName.Contains(foodName, StringComparison.OrdinalIgnoreCase))
-                .Take(20)
-                .ToList();
+        // ── Bug Fix 3: API가 이미 foodName으로 검색한 결과를 재필터링하지 않음 ──
+        // 기존 Contains 재필터가 유효한 결과(뿌링클 등)를 제거하던 문제 해결
+        var finalResults = results.Take(20).ToList();
 
-        results = filtered.Count > 0
-            ? filtered
-            : FallbackFoods
-                .Where(food => food.FoodName.Contains(foodName, StringComparison.OrdinalIgnoreCase))
-                .Take(20)
-                .ToList();
+        if (finalResults.Count == 0)
+            finalResults = FallbackSearch(foodName);
 
-        SearchCache[foodName] = (DateTime.UtcNow, results);
-        return results;
+        SearchCache[foodName] = (DateTime.UtcNow, finalResults);
+        return finalResults;
     }
 
+    // 공공 API 실패 시 내장 데이터에서 검색
+    private List<FoodSearchResponse> FallbackSearch(string foodName) =>
+        FallbackFoods
+            .Where(f => f.FoodName.Contains(foodName, StringComparison.OrdinalIgnoreCase))
+            .Take(20)
+            .ToList();
+
+    // ── Bug Fix 2: 숫자형 JSON 값도 처리 (기존엔 string만 처리 → 숫자면 0 반환) ──
     private static double ParseDouble(
         JsonElement item,
         string propertyName
     )
     {
-        if (!item.TryGetProperty(
-            propertyName,
-            out var value))
-        {
+        if (!item.TryGetProperty(propertyName, out var value))
             return 0;
-        }
 
+        // 공공 API 응답이 숫자형일 때
+        if (value.ValueKind == JsonValueKind.Number)
+            return value.TryGetDouble(out var num) ? num : 0;
+
+        // 문자열형 ("259.00" 등) — InvariantCulture로 소수점 파싱 보장
         return double.TryParse(
             value.GetString(),
-            out var result)
-            ? result
-            : 0;
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var result) ? result : 0;
     }
 }
