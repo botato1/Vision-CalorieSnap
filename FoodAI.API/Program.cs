@@ -1,5 +1,6 @@
 ﻿using FoodAI.API.Infrastructure;
 using FoodAI.API.Services;
+using FoodAI.API.Services.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,7 +11,7 @@ builder.Services.AddSingleton<DatabaseContext>();
 
 builder.Services.AddHttpClient();
 
-
+builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IOpenAiService, GeminiService>();
 builder.Services.AddScoped<IMealService, MealService>();
 builder.Services.AddScoped<IFoodNutritionService, FoodNutritionService>();
