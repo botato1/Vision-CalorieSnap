@@ -161,6 +161,18 @@ export default function Home() {
   // 즐겨찾기: 음식 이름만 저장하던 것 → 영양 데이터 전체 저장
   const [favorites, setFavorites] = useState<any[]>([]);
   const [graphPeriod, setGraphPeriod] = useState('daily');
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
+  const [chatInput, setChatInput] = useState('');
+
+  const [chatMessages, setChatMessages] = useState<any[]>([
+    {
+      role: 'bot',
+      text: '안녕하세요 👋 먹깨비 AI 영양 코치입니다!'
+    }
+  ]);
+
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
   const allItems = [...meals.breakfast.items, ...meals.lunch.items, ...meals.dinner.items, ...meals.snack.items];
   const totalConsumed = calcTotals(allItems);
@@ -754,6 +766,66 @@ export default function Home() {
     }
   };
 
+
+  const sendChatMessage = async () => {
+  if (!chatInput.trim()) return;
+
+  const userMessage = chatInput;
+
+  // 사용자 메시지 추가
+  setChatMessages(prev => [
+    ...prev,
+    {
+      role: 'user',
+      text: userMessage
+    }
+  ]);
+
+  setChatInput('');
+  setIsChatLoading(true);
+
+  try {
+    const res = await fetch(`${API_BASE}/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: userMessage,
+
+        currentCalories: totalConsumed.calories,
+        currentProtein: totalConsumed.protein,
+        currentCarbs: totalConsumed.carbs,
+        currentFat: totalConsumed.fat,
+
+        targetCalories: TARGET_CALORIES,
+        targetProtein: TARGET.protein,
+        targetCarbs: TARGET.carbs,
+        targetFat: TARGET.fat
+      })
+    });
+
+    const data = await res.json();
+
+    setChatMessages(prev => [
+      ...prev,
+      {
+        role: 'bot',
+        text: data.reply
+      }
+    ]);
+  } catch {
+    setChatMessages(prev => [
+      ...prev,
+      {
+        role: 'bot',
+        text: '서버 연결 실패'
+      }
+    ]);
+  } finally {
+    setIsChatLoading(false);
+  }
+};
   const graphData = getGraphData(graphPeriod);
   const safeIntake = graphData.intake.map(v => (isNaN(v) || !isFinite(v)) ? 0 : v);
   // 일간: 끼니당 칼로리 기준 → 1500 고정 (권장선 TARGET/4가 약 33~42% 위치로 가독성 확보)
@@ -1233,6 +1305,124 @@ export default function Home() {
           </div>
         </div>
       </main>
+
+{/* 챗봇 버튼 */}
+<button
+  onClick={() => setIsChatOpen(prev => !prev)}
+  className="
+    fixed bottom-6 right-6 z-50
+    w-16 h-16 rounded-full
+    bg-gradient-to-r from-orange-500 to-red-500
+    text-white text-2xl
+    shadow-2xl hover:scale-110
+    transition-all
+  "
+>
+  🤖
+</button>
+
+{/* 챗봇 창 */}
+{isChatOpen && (
+  <div
+    className="
+      fixed bottom-24 right-6 z-50
+      w-[360px] h-[500px]
+      bg-white rounded-3xl
+      shadow-2xl border border-slate-200
+      flex flex-col overflow-hidden
+    "
+  >
+    {/* 헤더 */}
+    <div className="
+      bg-gradient-to-r from-orange-500 to-red-500
+      text-white p-4
+      font-black
+      flex justify-between items-center
+    ">
+      <span>🤖 먹깨비 AI 코치</span>
+
+      <button
+        onClick={() => setIsChatOpen(false)}
+      >
+        ✕
+      </button>
+    </div>
+
+    {/* 메시지 */}
+    <div className="
+      flex-1 overflow-y-auto
+      p-4 space-y-3
+      bg-slate-50
+    ">
+      {chatMessages.map((msg, idx) => (
+        <div
+          key={idx}
+          className={`flex ${
+            msg.role === 'user'
+              ? 'justify-end'
+              : 'justify-start'
+          }`}
+        >
+          <div
+            className={`
+              max-w-[80%]
+              px-4 py-3 rounded-2xl
+              text-sm
+              ${
+                msg.role === 'user'
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-white border border-slate-200 text-slate-700'
+              }
+            `}
+          >
+            {msg.text}
+          </div>
+        </div>
+      ))}
+
+      {isChatLoading && (
+        <div className="text-xs text-slate-400">
+          AI 답변 생성중...
+        </div>
+      )}
+    </div>
+
+    {/* 입력창 */}
+    <div className="
+      p-3 border-t bg-white
+      flex gap-2
+    ">
+      <input
+        value={chatInput}
+        onChange={(e) =>
+          setChatInput(e.target.value)
+        }
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            sendChatMessage();
+          }
+        }}
+        placeholder="메시지를 입력하세요"
+        className="
+          flex-1 border border-slate-200
+          rounded-xl px-4 py-2
+          text-sm outline-none
+        "
+      />
+
+      <button
+        onClick={sendChatMessage}
+        className="
+          px-4 rounded-xl
+          bg-orange-500 text-white
+          font-bold
+        "
+      >
+        전송
+      </button>
+    </div>
+  </div>
+)}
 
       {/* ════ 끼니 상세 기록 모달 (탄단지 리스트 추가됨) ════ */}
       {mealModalType && (() => {
