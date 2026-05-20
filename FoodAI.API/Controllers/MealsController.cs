@@ -1,5 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
+using FoodAI.API.DTOs.Requests;
 using FoodAI.API.Services;
+using Microsoft.AspNetCore.Mvc;
 
 namespace FoodAI.API.Controllers;
 
@@ -8,11 +9,17 @@ namespace FoodAI.API.Controllers;
 public class MealsController : ControllerBase
 {
     private readonly IOpenAiService _geminiService;
+    private readonly IMealService _mealService;
+    private readonly IFoodNutritionService _foodNutritionService;
 
-    // 생성자: GeminiService를 주입받음
-    public MealsController(IOpenAiService geminiService)
+    public MealsController(
+        IOpenAiService geminiService,
+        IMealService mealService,
+        IFoodNutritionService foodNutritionService)
     {
         _geminiService = geminiService;
+        _mealService = mealService;
+        _foodNutritionService = foodNutritionService;
     }
 
     // 기존 테스트 엔드포인트

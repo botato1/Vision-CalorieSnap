@@ -22,16 +22,15 @@ namespace FoodAI.API.Controllers
             using var conn = _db.CreateConnection();
             await conn.OpenAsync();
 
-            // DB에서 이름 + 비밀번호로 유저 조회
             var cmd = new SqlCommand(
-                "SELECT ProfileID, Name FROM dbo.UserProfile WHERE Name = @Name AND Password = @Password", conn);
-            cmd.Parameters.AddWithValue("@Name", request.Name);
-            cmd.Parameters.AddWithValue("@Password", request.Password);
+                "SELECT ProfileID, Name FROM dbo.UserProfile WHERE ProfileID = @ProfileID AND ProfilePW = @ProfilePW", conn);
+            cmd.Parameters.AddWithValue("@ProfileID", request.ProfileID);
+            cmd.Parameters.AddWithValue("@ProfilePW", request.ProfilePW);
 
             using var reader = await cmd.ExecuteReaderAsync();
 
             if (!reader.Read())
-                return Unauthorized(new { message = "이름 또는 비밀번호가 틀렸습니다." });
+                return Unauthorized(new { message = "아이디 또는 비밀번호가 틀렸습니다." });
 
             return Ok(new
             {
@@ -45,7 +44,7 @@ namespace FoodAI.API.Controllers
     // 로그인 요청 데이터
     public class LoginRequest
     {
-        public string Name { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty;
+        public string ProfileID { get; set; } = string.Empty;
+        public string ProfilePW { get; set; } = string.Empty;
     }
 }

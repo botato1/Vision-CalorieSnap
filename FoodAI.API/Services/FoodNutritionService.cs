@@ -1,7 +1,6 @@
 ﻿using System.Text.Json;
 
 using FoodAI.API.DTOs.Responses;
-using FoodAI.API.Services.Interfaces;
 
 namespace FoodAI.API.Services;
 

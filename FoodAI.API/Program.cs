@@ -11,14 +11,9 @@ builder.Services.AddSingleton<DatabaseContext>();
 builder.Services.AddHttpClient();
 
 
-// GeminiService를 DI 컨테이너에 등록
 builder.Services.AddScoped<IOpenAiService, GeminiService>();
-
-// 이미지 서비스 (구현체 만들면 ImageService로 교체)
-// builder.Services.AddScoped<IImageService, ImageService>();
-
-// 식사 서비스 (구현체 만들면 MealService로 교체)
-// builder.Services.AddScoped<IMealService, MealService>();
+builder.Services.AddScoped<IMealService, MealService>();
+builder.Services.AddScoped<IFoodNutritionService, FoodNutritionService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
