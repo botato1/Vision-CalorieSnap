@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import axios from 'axios';
 
 // DB의 영양성분은 '100g'을 기준으로 한다고 가정합니다.
 const DUMMY_FOOD_DB = [
@@ -25,12 +26,12 @@ const RECOMMEND_MENU_DB = [
 
 // 활동 배수(multiplier)는 미플린-세인트 지어 공식의 PAL 계수 기준
 const JOB_OPTIONS = [
-  { value: 'sedentary', label: '💼 사무직/재택', desc: '주로 앉아서 생활하는 직업', multiplier: 1.2 },
-  { value: 'student', label: '📚 학생', desc: '학교 중심, 가끔 이동', multiplier: 1.3 },
-  { value: 'service', label: '🛎️ 서비스/판매직', desc: '서서 이동이 많은 직업', multiplier: 1.375 },
-  { value: 'field', label: '🚶 현장직/교사', desc: '이동과 활동이 많은 직업', multiplier: 1.55 },
-  { value: 'physical', label: '🔨 육체노동직', desc: '하루 종일 몸을 쓰는 직업', multiplier: 1.725 },
-  { value: 'athlete', label: '🏃 운동선수/트레이너', desc: '고강도 훈련이 일상인 직업', multiplier: 1.9 },
+  { value: 0, label: '💼 사무직/재택', desc: '주로 앉아서 생활하는 직업', multiplier: 1.2 },
+  { value: 1, label: '📚 학생', desc: '학교 중심, 가끔 이동', multiplier: 1.3 },
+  { value: 2, label: '🔨 육체노동직', desc: '하루 종일 몸을 쓰는 직업', multiplier: 1.375 },
+  { value: 3, label: '🛎️ 서비스/판매직', desc: '이동과 활동이 많은 직업', multiplier: 1.55 },
+  { value: 4, label: '💻 재택/프리랜서', desc: '집이나 개인 작업 공간에서 주로 근무하는 형태', multiplier: 1.725 },
+  { value: 5, label: '🏃 운동선수/트레이너', desc: '고강도 훈련이 일상인 직업', multiplier: 1.9 },
 ];
 
 const MEAL_CFG = {
@@ -219,10 +220,13 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ profileID: loginId, profilePW: loginPw }),
+ 
       });
       if (res.ok) {
         const data = await res.json();
         setIsLoggedIn(true);
+        // 이미 가입된 사람이므로 신체정보 등록창을 건너뛰고 메인 화면으로 이동
+        setIsInitialSetupDone(true);
         setUserInfo(prev => ({ ...prev, name: data.name }));
         closeLoginModal();
       } else {
@@ -232,10 +236,60 @@ export default function Home() {
       setLoginError('서버 연결 실패');
     }
   };
-  const handleInitialSetupSubmit = (e) => { 
+  const handleGoToRegister = (e) => {
     e.preventDefault();
-    if (!userInfo.job) { alert('직업을 선택해주세요.'); return; } setIsInitialSetupDone(true); 
+    if (!loginId || !loginPw) {
+      setLoginError('가입할 아이디와 비밀번호를 먼저 입력해주세요.');
+      return;
+    }
+    // 로그인 창을 닫고, 로그인 상태를 true로 만들되 가입은 안 된 상태(SetupDone=false)로 전환
+    setIsLoggedIn(true);
+    setIsInitialSetupDone(false);
+    closeLoginModal();
   };
+
+  const handleInitialSetupSubmit = async (e) => { 
+  e.preventDefault();
+  if (userInfo.job === '') { alert('직업을 선택해주세요.'); return; } 
+
+  try {
+    // 백엔드의 CreateUserProfileRequest DTO 스펙에 정확히 맞추어 보냅니다.
+    const response = await fetch('https://localhost:5260/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        profileID: loginId,
+        profilePW: loginPw,
+        name: userInfo.name,
+        male: userInfo.gender === 'male',
+        height: parseFloat(userInfo.height),
+        weight: parseFloat(userInfo.weight),
+        age: parseInt(userInfo.age), // 백엔드가 int로 받으므로 변환 필수!
+        targetCalories: TARGET_CALORIES,
+        job: parseInt(userInfo.job) // 숫자로 변환하여 Enum 매핑 보장!
+      })
+    });
+
+    if (response.ok) { // 👈 상태 코드가 201이면 response.ok는 자동으로 true가 됩니다!
+      
+      // 1. 백엔드가 보낸 JSON 데이터(StatusCode 201의 알맹이)를 꺼냅니다.
+      const data = await response.json(); 
+      
+      // 2. 백엔드에서 보낸 message("회원가입 성공")와 name을 조합해서 알림창을 띄웁니다.
+      alert(`${data.name}님, ${data.message} 환영합니다!`); 
+      
+      setIsInitialSetupDone(true); // 메인 화면으로 이동
+      
+    } else {
+      const errData = await response.json();
+      alert(`회원가입 실패: ${errData.message}`);
+      setIsLoggedIn(false); 
+    }
+  } catch (error) {
+    console.error(error);
+    alert('서버 연결에 실패했습니다.');
+  }
+};
   const handleSaveUser = (e) => { 
     e.preventDefault(); setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000); 
@@ -484,6 +538,7 @@ setAnalysisResult(foods);
                   {loginError && <div className="text-xs font-bold text-red-500 bg-red-50 py-2 rounded-lg">{loginError}</div>}
                   <div className="pt-4">
                     <button type="submit" className="w-full bg-slate-800 text-white font-black py-4 rounded-xl text-base hover:bg-slate-900 transition-all">로그인</button>
+                    <button type="button" onClick={handleGoToRegister} className="w-full mt-2 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black py-4 rounded-xl text-base hover:opacity-95 transition-all">이 정보로 회원가입</button>
                     <button type="button" onClick={closeLoginModal} className="w-full mt-3 text-slate-400 font-bold text-sm py-2 hover:text-slate-600">취소</button>
                   </div>
                 </form>
