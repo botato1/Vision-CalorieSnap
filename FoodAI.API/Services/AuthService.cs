@@ -130,6 +130,7 @@ namespace FoodAI.API.Services
                        Height         = @Height,
                        Weight         = @Weight,
                        TargetCalories = @TargetCalories
+                       Job            = @Job
                 WHERE  ProfileID = @ProfileID";
 
             using var conn = _db.CreateConnection();
@@ -139,6 +140,7 @@ namespace FoodAI.API.Services
             cmd.Parameters.AddWithValue("@ProfileID", ProfileID);
             cmd.Parameters.AddWithValue("@Height", profile.Height);
             cmd.Parameters.AddWithValue("@Weight", profile.Weight);
+            cmd.Parameters.AddWithValue("@Job", profile.Job);
             cmd.Parameters.AddWithValue("@TargetCalories", profile.TargetCalories);
 
             var affected = await cmd.ExecuteNonQueryAsync();
