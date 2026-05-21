@@ -53,7 +53,7 @@ const normalizeProfile = (payload: any) => {
 };
 
 const normalizeFoodSearch = (food: any) => ({
-  name: food.makerName ? `[${food.makerName}] ${food.foodName}` : (food.foodName ?? food.FoodName ?? ''),
+  name: food.makerName ? `[${food.makerName}] ${food.foodName ?? food.FoodName ?? ''}` : (food.foodName ?? food.FoodName ?? ''),
   rawName: food.foodName ?? food.FoodName ?? '',
   makerName: food.makerName ?? food.MakerName ?? '',
   calories: Number(food.calories ?? food.Calories ?? 0),
@@ -391,7 +391,15 @@ export default function Home() {
       alert('정보 업데이트에 실패했습니다.');
     }
   };
-  const handleLogout = () => { setIsLoggedIn(false); setIsInitialSetupDone(false); setMealModalType(null); setProfileId(''); setIsRegisterMode(false); };
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setIsInitialSetupDone(false);
+    setMealModalType(null);
+    setProfileId('');
+    setIsRegisterMode(false);
+    setMealsByDate({});           // 이전 사용자 식사 데이터 초기화
+    searchCacheRef.current = {};  // 검색 캐시 초기화
+  };
   
   const openMealModal = (type) => setMealModalType(type);
   const closeMealModal = () => setMealModalType(null);
@@ -473,7 +481,7 @@ export default function Home() {
     const targetMealType = searchMealType as MealTypeKey;
     const multiplier = foodGrams / 100;
     const finalFood = {
-      name: selectedFoodForDetail.name,
+      name: selectedFoodForDetail.rawName || selectedFoodForDetail.name,
       grams: foodGrams,
       calories: Math.round(selectedFoodForDetail.calories * multiplier),
       carbs: Math.round(selectedFoodForDetail.carbs * multiplier),
@@ -581,12 +589,17 @@ export default function Home() {
       });
       if (res.ok) {
         const data = await res.json();
-        const raw = String(data.result ?? '').replace(/```json|```/g, '').trim();
-        const foods = JSON.parse(raw).foods ?? [];
-        setAnalysisResult(foods);
-        // 분석 완료 시 모든 음식을 기본으로 선택된 상태로 초기화
-        setSelectedFoods(foods.map((_, idx) => idx));
-        setAnalysisStatus('done');
+        try {
+          const raw = String(data.result ?? '').replace(/```json|```/g, '').trim();
+          const foods = JSON.parse(raw).foods ?? [];
+          setAnalysisResult(foods);
+          // 분석 완료 시 모든 음식을 기본으로 선택된 상태로 초기화
+          setSelectedFoods(foods.map((_, idx) => idx));
+          setAnalysisStatus('done');
+        } catch {
+          setAnalysisStatus('idle');
+          alert('AI 분석 결과를 읽지 못했습니다. 다시 시도해주세요.');
+        }
       } else {
         setAnalysisStatus('idle');
         alert('분석 실패');
@@ -1634,6 +1647,7 @@ export default function Home() {
                   (searchResults as any[]).map((food, idx) => {
                     const foodObj = {
                       name: food.name,
+                      rawName: food.rawName ?? food.name,
                       calories: food.calories,
                       carbs: food.carbs,
                       protein: food.protein,
