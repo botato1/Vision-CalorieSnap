@@ -228,6 +228,7 @@ JSON만 답해줘, 다른 말 하지 말고. 코드블록도 쓰지 말고." }
                 .GetProperty("parts")[0]
                 .GetProperty("text")
                 .GetString()!;
+        }
 
         // 음식 이름으로 AI 영양 정보 추정
         public async Task<string> GetFoodNutritionByNameAsync(string foodName)
