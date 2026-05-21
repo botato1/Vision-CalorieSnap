@@ -9,10 +9,10 @@ type MealTypeKey = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 // 활동 배수(multiplier)는 미플린-세인트 지어 공식의 PAL 계수 기준
 const JOB_OPTIONS = [
   { value: 0, label: '💼 사무직/재택', desc: '주로 앉아서 생활하는 직업', multiplier: 1.2 },
-  { value: 1, label: '📚 학생', desc: '학교 중심, 가끔 이동', multiplier: 1.3 },
-  { value: 2, label: '🔨 육체노동직', desc: '하루 종일 몸을 쓰는 직업', multiplier: 1.375 },
+  { value: 1, label: '📚 학생', desc: '학교 중심, 가끔 이동', multiplier: 1.375 },
+  { value: 2, label: '🔨 육체노동직', desc: '하루 종일 몸을 쓰는 직업', multiplier: 1.725 },
   { value: 3, label: '🛎️ 서비스/판매직', desc: '이동과 활동이 많은 직업', multiplier: 1.55 },
-  { value: 4, label: '💻 재택/프리랜서', desc: '집이나 개인 작업 공간에서 주로 근무하는 형태', multiplier: 1.725 },
+  { value: 4, label: '💻 재택/프리랜서', desc: '집이나 개인 작업 공간에서 주로 근무하는 형태', multiplier: 1.2 },
   { value: 5, label: '🏃 운동선수/트레이너', desc: '고강도 훈련이 일상인 직업', multiplier: 1.9 },
 ];
 
@@ -883,7 +883,7 @@ export default function Home() {
                   {loginError && <div className="text-xs font-bold text-red-500 bg-red-50 py-2 rounded-lg">{loginError}</div>}
                   <div className="pt-4">
                     <button type="submit" className="w-full bg-slate-800 text-white font-black py-4 rounded-xl text-base hover:bg-slate-900 transition-all">로그인</button>
-                    <button type="button" onClick={handleGoToRegister} className="w-full mt-2 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black py-4 rounded-xl text-base hover:opacity-95 transition-all">이 정보로 회원가입</button>
+                    <button type="button" onClick={handleGoToRegister} className="w-full mt-2 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black py-4 rounded-xl text-base hover:opacity-95 transition-all">회원가입</button>
                     <button type="button" onClick={closeLoginModal} className="w-full mt-3 text-slate-400 font-bold text-sm py-2 hover:text-slate-600">취소</button>
                   </div>
                 </form>
@@ -1679,7 +1679,7 @@ export default function Home() {
                 ) : (
                   <div className="flex flex-col items-center gap-3 text-center">
                     <svg className="w-12 h-12 text-slate-300 group-hover:text-orange-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 002-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                    <span className="text-sm font-bold text-slate-500">배달 음식 사진 업로드</span>
+                    <span className="text-sm font-bold text-slate-500">음식 사진 업로드</span>
                   </div>
                 )}
                 <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleImageSelect} />
