@@ -737,14 +737,25 @@ export default function Home() {
         };
       }
       case 'yearly': {
-        // 식사 데이터가 있는 날만 평균 — 비어있는 날은 제외
-        // 오프셋 범위: -363 ~ 0 (오늘 포함 364일)
-        // q=0: -363~-273  q=1: -272~-182  q=2: -181~-91  q=3: -90~0(오늘)
+        // 실제 달력 분기 기준: 1분기=1~3월, 2분기=4~6월, 3분기=7~9월, 4분기=10~12월
         const Q_MONTHS = ['1~3월', '4~6월', '7~9월', '10~12월'];
+        const Q_RANGES = [[1,3],[4,6],[7,9],[10,12]] as [number,number][];
+        const currentYear = new Date(selectedDate).getFullYear();
+
         const items = Array.from({ length: 4 }, (_, q) => {
-          const dayCals = Array.from({ length: 91 }, (_, d) =>
-            getDayCalories(getDateStr(-363 + q * 91 + d))
-          );
+          const [startM, endM] = Q_RANGES[q];
+          const dayCals: number[] = [];
+
+          // 해당 분기의 모든 날짜를 순회, 미래 날짜는 제외
+          outer: for (let month = startM; month <= endM; month++) {
+            const daysInMonth = new Date(currentYear, month, 0).getDate();
+            for (let day = 1; day <= daysInMonth; day++) {
+              const dateStr = `${currentYear}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+              if (dateStr > selectedDate) break outer; // 미래 날짜 도달 시 즉시 종료
+              dayCals.push(getDayCalories(dateStr));
+            }
+          }
+
           const activeDays = dayCals.filter(c => c > 0);
           return {
             label:    `${q + 1}분기`,
